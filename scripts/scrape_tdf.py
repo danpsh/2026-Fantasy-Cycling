@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 """
-Scrape Tour de France stage results from ProCyclingStats and write them in the
-exact column layout the Fantasy Cycling scoring engine expects (tdf-results.xlsx).
+Scrape Tour de France stage results from ProCyclingStats into the column layout
+the Fantasy Cycling engine expects (tdf-results.xlsx).
 
-Run locally:
+Verbose/diagnostic build: prints exactly what the procyclingstats library
+returns so we can confirm method names and field keys.
+
     pip install procyclingstats openpyxl
-    YEAR=2026 OUT=tdf-results.xlsx python scripts/scrape_tdf.py
-
-Validate against last year before the Tour:
     YEAR=2025 OUT=tdf-results-2025-test.xlsx python scripts/scrape_tdf.py
-
-The engine reads, per stage row:
-    Date, Stage, 1st..10th, GC #1..#10, Points #1-3, Mountain #1-3, Youth #1-3
-It rebuilds the whole file each run from every completed stage (idempotent).
 """
 import os
 import sys
+import traceback
 
+import procyclingstats
 from procyclingstats import Stage
 from openpyxl import Workbook
 
@@ -24,6 +21,9 @@ YEAR = os.environ.get("YEAR", "2026")
 OUT = os.environ.get("OUT", "tdf-results.xlsx")
 RACE = os.environ.get("RACE_SLUG", "tour-de-france")
 MAX_STAGES = int(os.environ.get("MAX_STAGES", "21"))
+
+print(f"procyclingstats version: {getattr(procyclingstats, '__version__', '?')}")
+print(f"YEAR={YEAR} OUT={OUT} RACE={RACE}")
 
 HEADER = (
     ["Date", "Stage"]
@@ -36,56 +36,86 @@ HEADER = (
 
 
 def fmt_name(pcs_name):
-    """'VINGEGAARD Jonas' -> 'Jonas Vingegaard'. Surname tokens are ALL-CAPS."""
     if not pcs_name:
         return ""
-    toks = pcs_name.split()
+    toks = str(pcs_name).split()
     surname = [t for t in toks if t == t.upper()]
     given = [t for t in toks if t != t.upper()]
-    surname_title = " ".join(w.capitalize() for w in surname)
-    return (" ".join(given) + " " + surname_title).strip()
+    return (" ".join(given) + " " + " ".join(w.capitalize() for w in surname)).strip()
+
+
+def name_of(row):
+    """Pull the rider's display name from a result row, whatever the key is called."""
+    if isinstance(row, dict):
+        for k in ("rider_name", "rider", "name"):
+            if row.get(k):
+                return row[k]
+    return ""
+
+
+def rank_of(row, fallback):
+    if isinstance(row, dict):
+        for k in ("rank", "position", "place"):
+            if row.get(k) not in (None, ""):
+                try:
+                    return int(row[k])
+                except (TypeError, ValueError):
+                    pass
+    return fallback
+
+
+def get_classification(stage, method_name, parsed):
+    """Return a list of result rows for a classification, trying the method then parse()."""
+    try:
+        v = getattr(stage, method_name)()
+        if v:
+            return v
+    except Exception as e:
+        print(f"    .{method_name}() raised: {e}", file=sys.stderr)
+    if isinstance(parsed, dict) and parsed.get(method_name):
+        return parsed[method_name]
+    return []
 
 
 def ranked(rows, n):
-    """Return rider names ordered by rank 1..n (PCS rows have 'rank' + 'rider_name')."""
     out = [""] * n
-    if not rows:
-        return out
-    for row in rows:
-        rank = row.get("rank")
-        try:
-            r = int(rank)
-        except (TypeError, ValueError):
-            continue
+    for i, row in enumerate(rows or []):
+        r = rank_of(row, i + 1)
         if 1 <= r <= n:
-            out[r - 1] = fmt_name(row.get("rider_name", ""))
+            out[r - 1] = fmt_name(name_of(row))
     return out
 
 
-def safe(method):
-    try:
-        v = method()
-        return v or []
-    except Exception:
-        return []
-
-
-def scrape_stage(n):
+def scrape_stage(n, verbose):
     url = f"race/{RACE}/{YEAR}/stage-{n}"
     stage = Stage(url)
-    results = safe(stage.results)
+    parsed = None
+    try:
+        parsed = stage.parse()
+        if verbose:
+            keys = list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)
+            print(f"  parse() keys: {keys}")
+    except Exception as e:
+        if verbose:
+            print(f"  parse() raised: {e}", file=sys.stderr)
+
+    results = get_classification(stage, "results", parsed)
+    if verbose and results:
+        print(f"  first result row: {results[0]}")
     if not results:
-        return None  # not raced yet (or no finishers parsed)
+        return None
+
     try:
         date = stage.date()
     except Exception:
-        date = ""
+        date = (parsed or {}).get("date", "") if isinstance(parsed, dict) else ""
+
     row = [date, n]
     row += ranked(results, 10)
-    row += ranked(safe(stage.gc), 10)
-    row += ranked(safe(stage.points), 3)
-    row += ranked(safe(stage.kom), 3)
-    row += ranked(safe(stage.youth), 3)
+    row += ranked(get_classification(stage, "gc", parsed), 10)
+    row += ranked(get_classification(stage, "points", parsed), 3)
+    row += ranked(get_classification(stage, "kom", parsed), 3)
+    row += ranked(get_classification(stage, "youth", parsed), 3)
     return row
 
 
@@ -93,13 +123,14 @@ def main():
     rows = []
     for n in range(1, MAX_STAGES + 1):
         try:
-            r = scrape_stage(n)
+            r = scrape_stage(n, verbose=(n == 1))
         except Exception as e:
-            print(f"stage {n}: error {e}", file=sys.stderr)
+            print(f"stage {n}: ERROR {e}", file=sys.stderr)
+            traceback.print_exc()
             r = None
         if r is None:
-            print(f"stage {n}: no results yet — stopping")
-            break
+            print(f"stage {n}: no results")
+            continue
         print(f"stage {n}: {r[0]} winner {r[2]}")
         rows.append(r)
 
