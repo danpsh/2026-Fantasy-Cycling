@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-DIAGNOSTIC build. Figures out why scraping returns nothing:
-  1) prints the installed procyclingstats version
-  2) does a raw HTTP request to PCS (with a browser User-Agent) and reports the
-     status code + a snippet  -> tells us if PCS is blocking the runner
-  3) tries the library and prints the FULL error to stdout (not stderr)
-If the library works it still writes the results file.
+Scrape Tour de France results from ProCyclingStats -> tdf-results.xlsx.
+
+On PCS each classification is its OWN page:
+    stage finish : race/<race>/<year>/stage-<n>
+    GC           : race/<race>/<year>/stage-<n>-gc
+    points       : race/<race>/<year>/stage-<n>-points
+    KOM          : race/<race>/<year>/stage-<n>-kom
+    youth        : race/<race>/<year>/stage-<n>-youth
+Each page's .results() returns that ranked table.
+
+Includes a raw-HTTP probe (browser User-Agent) so the log shows whether the
+runner can reach PCS at all (HTTP 200 vs 403/blocked).
 
     pip install procyclingstats openpyxl
     YEAR=2025 OUT=tdf-results-2025-test.xlsx python scripts/scrape_tdf.py
@@ -31,7 +37,7 @@ try:
 except Exception as e:
     print("version lookup failed:", e)
 
-# ---- raw probe ----
+
 def probe(url):
     full = "https://www.procyclingstats.com/" + url
     print(f"\n=== RAW PROBE {full} ===")
@@ -39,18 +45,17 @@ def probe(url):
         req = urllib.request.Request(full, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=25) as r:
             body = r.read().decode("utf-8", "replace")
-            print(f"HTTP {r.status}, {len(body)} bytes")
             low = body.lower()
-            print("looks like results table:", ("resulttable" in low or 'class="results' in low or "<table" in low))
-            print("looks blocked (cf/captcha):", ("cloudflare" in low or "captcha" in low or "just a moment" in low))
-            print("snippet:", " ".join(body[:300].split()))
+            print(f"HTTP {r.status}, {len(body)} bytes")
+            print("has results table:", ("resulttable" in low or 'class="results' in low or "<table" in low))
+            print("looks blocked:", ("cloudflare" in low or "captcha" in low or "just a moment" in low))
+            print("snippet:", " ".join(body[:250].split()))
     except Exception as e:
         print("RAW PROBE ERROR:", e)
 
+
 probe(f"race/{RACE}/{YEAR}/stage-1")
 
-# ---- library attempt ----
-print("\n=== LIBRARY ATTEMPT (stage 1) ===")
 Stage = None
 try:
     from procyclingstats import Stage as _Stage
@@ -59,28 +64,7 @@ except Exception:
     print("import procyclingstats FAILED:")
     traceback.print_exc(file=sys.stdout)
 
-if Stage:
-    try:
-        s = Stage(f"race/{RACE}/{YEAR}/stage-1")
-        try:
-            p = s.parse()
-            print("parse() keys:", list(p.keys()) if isinstance(p, dict) else type(p))
-        except Exception:
-            print("parse() traceback:")
-            traceback.print_exc(file=sys.stdout)
-        try:
-            res = s.results()
-            print("results() type:", type(res), "len:", len(res) if res else 0)
-            if res:
-                print("first result row:", res[0])
-        except Exception:
-            print("results() traceback:")
-            traceback.print_exc(file=sys.stdout)
-    except Exception:
-        print("Stage() construction traceback:")
-        traceback.print_exc(file=sys.stdout)
 
-# ---- name helpers ----
 def fmt_name(pcs_name):
     if not pcs_name:
         return ""
@@ -89,12 +73,14 @@ def fmt_name(pcs_name):
     given = [t for t in toks if t != t.upper()]
     return (" ".join(given) + " " + " ".join(w.capitalize() for w in surname)).strip()
 
+
 def name_of(row):
     if isinstance(row, dict):
         for k in ("rider_name", "rider", "name"):
             if row.get(k):
                 return row[k]
     return ""
+
 
 def rank_of(row, fb):
     if isinstance(row, dict):
@@ -106,6 +92,23 @@ def rank_of(row, fb):
                     pass
     return fb
 
+
+def page_results(url, debug=False):
+    """Return the ranked .results() list for a PCS page URL ('' on failure)."""
+    if not Stage:
+        return []
+    try:
+        rows = Stage(url).results() or []
+        if debug:
+            print(f"  {url} -> {len(rows)} rows; first: {rows[0] if rows else None}")
+        return rows
+    except Exception as e:
+        if debug:
+            print(f"  {url} -> ERROR {e}")
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+
 def ranked(rows, n):
     out = [""] * n
     for i, row in enumerate(rows or []):
@@ -114,36 +117,42 @@ def ranked(rows, n):
             out[r - 1] = fmt_name(name_of(row))
     return out
 
-def cls(stage, m):
-    try:
-        return getattr(stage, m)() or []
-    except Exception:
-        return []
 
-HEADER = (["Date", "Stage"] + ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"]
-          + [f"GC #{i}" for i in range(1,11)] + [f"Points #{i}" for i in range(1,4)]
-          + [f"Mountain #{i}" for i in range(1,4)] + [f"Youth #{i}" for i in range(1,4)])
+def stage_date(n):
+    if not Stage:
+        return ""
+    try:
+        return Stage(f"race/{RACE}/{YEAR}/stage-{n}").date()
+    except Exception:
+        return ""
+
+
+HEADER = (["Date", "Stage"] + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
+          + [f"GC #{i}" for i in range(1, 11)] + [f"Points #{i}" for i in range(1, 4)]
+          + [f"Mountain #{i}" for i in range(1, 4)] + [f"Youth #{i}" for i in range(1, 4)])
+
 
 def main():
-    if not Stage:
-        return
+    print("\n=== STAGE 1 DETAIL ===")
+    base = f"race/{RACE}/{YEAR}/stage-1"
+    page_results(base, debug=True)
+    page_results(base + "-gc", debug=True)
+
     rows = []
     for n in range(1, MAX_STAGES + 1):
-        try:
-            st = Stage(f"race/{RACE}/{YEAR}/stage-{n}")
-            results = cls(st, "results")
-            if not results:
-                continue
-            try:
-                date = st.date()
-            except Exception:
-                date = ""
-            row = [date, n] + ranked(results, 10) + ranked(cls(st, "gc"), 10) \
-                + ranked(cls(st, "points"), 3) + ranked(cls(st, "kom"), 3) + ranked(cls(st, "youth"), 3)
-            rows.append(row)
-            print(f"stage {n}: {date} winner {row[2]}")
-        except Exception as e:
-            print(f"stage {n}: error {e}")
+        b = f"race/{RACE}/{YEAR}/stage-{n}"
+        results = page_results(b)
+        if not results:
+            continue
+        row = ([stage_date(n), n]
+               + ranked(results, 10)
+               + ranked(page_results(b + "-gc"), 10)
+               + ranked(page_results(b + "-points"), 3)
+               + ranked(page_results(b + "-kom"), 3)
+               + ranked(page_results(b + "-youth"), 3))
+        rows.append(row)
+        print(f"stage {n}: {row[0]} winner {row[2]}")
+
     if not rows:
         print("\nNo completed stages found; nothing written.")
         return
@@ -152,6 +161,7 @@ def main():
         ws.append(r)
     wb.save(OUT)
     print(f"\nWrote {len(rows)} stage(s) to {OUT}")
+
 
 if __name__ == "__main__":
     main()
