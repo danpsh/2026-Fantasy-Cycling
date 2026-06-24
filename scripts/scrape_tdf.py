@@ -2,21 +2,22 @@
 """
 Scrape Tour de France results from ProCyclingStats -> tdf-results.xlsx.
 
-The procyclingstats library (0.2.8) can't parse PCS's current HTML, so we fetch
-the pages directly (HTTP 200, browser UA) and parse the results table with
-selectolax. Riders are read in table (finishing) order, which IS the ranking.
+PCS's HTML is parsed directly with selectolax (the procyclingstats library
+0.2.8 can't read current PCS pages). Riders are identified by the URL slug in
+their link (rider/jasper-philipsen) and mapped to the canonical roster spelling
+from tdf-startlist.js.
 
-Per classification PCS uses its own page:
-    finish : race/<race>/<year>/stage-<n>
-    GC     : .../stage-<n>-gc      points : .../stage-<n>-points
-    KOM    : .../stage-<n>-kom     youth  : .../stage-<n>-youth
+This build reads every result table on a stage page (STAGE / GC / POINTS / KOM /
+YOUTH appear as separate tables) and prints a diagnostic for stages 1 and 20 so
+we can confirm which table is which.
 
     pip install procyclingstats openpyxl   # (brings selectolax)
     YEAR=2025 OUT=tdf-results-2025-test.xlsx python scripts/scrape_tdf.py
 """
 import os
 import re
-import sys
+import json
+import unicodedata
 import urllib.request
 
 from selectolax.parser import HTMLParser
@@ -28,7 +29,6 @@ RACE = os.environ.get("RACE_SLUG", "tour-de-france")
 MAX_STAGES = int(os.environ.get("MAX_STAGES", "21"))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
-# 2026 stage -> ISO date (used when a date can't be parsed off the page)
 SCHED_2026 = {1: "2026-07-04", 2: "2026-07-05", 3: "2026-07-06", 4: "2026-07-07",
               5: "2026-07-08", 6: "2026-07-09", 7: "2026-07-10", 8: "2026-07-11",
               9: "2026-07-12", 10: "2026-07-14", 11: "2026-07-15", 12: "2026-07-16",
@@ -42,64 +42,80 @@ MONTHS = {m: i for i, m in enumerate(
 print(f"=== ENV === YEAR={YEAR} OUT={OUT} RACE={RACE}")
 
 
+def pkey(s):
+    s = unicodedata.normalize("NFD", str(s))
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def load_canon():
+    try:
+        with open("tdf-startlist.js", "r", encoding="utf-8") as f:
+            t = f.read()
+        t = t[t.index("{"):t.rindex("}") + 1]
+        canon = {pkey(r["name"]): r["name"] for r in json.loads(t).get("riders", [])}
+        print(f"loaded {len(canon)} canonical names from tdf-startlist.js")
+        return canon
+    except Exception as e:
+        print("tdf-startlist.js not loaded (slug fallback):", e)
+        return {}
+
+
+CANON = load_canon()
+
+
 def fetch(url):
     full = "https://www.procyclingstats.com/" + url
     req = urllib.request.Request(full, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read().decode("utf-8", "replace")
+        return r.geturl(), r.read().decode("utf-8", "replace")
 
 
-def fmt_name(pcs_name):
-    if not pcs_name:
+def name_from_href(href):
+    m = re.search(r"rider/([^/?#\"]+)", href or "")
+    if not m:
         return ""
-    toks = str(pcs_name).split()
-    surname = [t for t in toks if t == t.upper()]
-    given = [t for t in toks if t != t.upper()]
-    return (" ".join(given) + " " + " ".join(w.capitalize() for w in surname)).strip()
+    slug = m.group(1).replace("-", " ").strip()
+    return CANON.get(pkey(slug)) or " ".join(w.capitalize() for w in slug.split())
 
 
-def parse_results(html):
-    """Return rider names in finishing order from the main results table."""
-    tree = HTMLParser(html)
-    table = tree.css_first("table.results") or tree.css_first("table")
-    if not table:
-        return []
+def table_names(table, n):
     body = table.css_first("tbody") or table
-    names = []
+    out, seen = [], set()
     for tr in body.css("tr"):
         a = tr.css_first('a[href*="rider/"]')
-        if a:
-            nm = fmt_name(a.text(strip=True))
-            if nm:
-                names.append(nm)
-    return names
+        if not a:
+            continue
+        nm = name_from_href(a.attributes.get("href", ""))
+        if nm and nm not in seen:
+            seen.add(nm)
+            out.append(nm)
+        if len(out) >= n:
+            break
+    return out
 
 
 def parse_date(html, n):
-    # Try "05 July 2025" / "5 july 2025" anywhere on the page
     m = re.search(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", html)
     if m and m.group(2).lower() in MONTHS:
         return f"{int(m.group(3)):04d}-{MONTHS[m.group(2).lower()]:02d}-{int(m.group(1)):02d}"
-    if YEAR == "2026" and n in SCHED_2026:
-        return SCHED_2026[n]
-    return ""
+    return SCHED_2026.get(n, "") if YEAR == "2026" else ""
 
 
-def page_names(url, debug=False):
+def diag(n):
     try:
-        names = parse_results(fetch(url))
-        if debug:
-            print(f"  {url} -> {len(names)} riders; top3: {names[:3]}")
-        return names
+        _, html = fetch(f"race/{RACE}/{YEAR}/stage-{n}")
     except Exception as e:
-        if debug:
-            print(f"  {url} -> ERROR {e}")
-        return []
+        print(f"  stage {n} diag fetch error {e}")
+        return
+    tables = HTMLParser(html).css("table.results")
+    print(f"  stage {n}: {len(tables)} result tables")
+    for i, t in enumerate(tables[:7]):
+        print(f"    table[{i}] top3: {table_names(t, 3)}")
 
 
-def row_of(names, n):
-    out = names[:n] + [""] * max(0, n - len(names))
-    return out[:n]
+def pad(names, n):
+    return (names[:n] + [""] * n)[:n]
 
 
 HEADER = (["Date", "Stage"] + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
@@ -108,33 +124,30 @@ HEADER = (["Date", "Stage"] + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", 
 
 
 def main():
-    print("\n=== STAGE 1 DETAIL ===")
-    b1 = f"race/{RACE}/{YEAR}/stage-1"
-    page_names(b1, debug=True)
-    page_names(b1 + "-gc", debug=True)
-    page_names(b1 + "-points", debug=True)
-    page_names(b1 + "-kom", debug=True)
-    page_names(b1 + "-youth", debug=True)
+    print("\n=== TABLE DIAGNOSTIC ===")
+    diag(1)
+    diag(20)
 
     rows = []
     for n in range(1, MAX_STAGES + 1):
-        b = f"race/{RACE}/{YEAR}/stage-{n}"
         try:
-            html = fetch(b)
+            _, html = fetch(f"race/{RACE}/{YEAR}/stage-{n}")
         except Exception as e:
             print(f"stage {n}: fetch error {e}")
             continue
-        finish = parse_results(html)
+        tables = HTMLParser(html).css("table.results")
+        if not tables:
+            continue
+        finish = table_names(tables[0], 10)
         if not finish:
             continue
-        row = ([parse_date(html, n), n]
-               + row_of(finish, 10)
-               + row_of(page_names(b + "-gc"), 10)
-               + row_of(page_names(b + "-points"), 3)
-               + row_of(page_names(b + "-kom"), 3)
-               + row_of(page_names(b + "-youth"), 3))
+
+        def tbl(i, k):
+            return pad(table_names(tables[i], k), k) if len(tables) > i else [""] * k
+
+        row = [parse_date(html, n), n] + pad(finish, 10) + tbl(1, 10) + tbl(2, 3) + tbl(3, 3) + tbl(4, 3)
         rows.append(row)
-        print(f"stage {n}: {row[0]} winner {row[2]}")
+        print(f"stage {n}: {row[0]} winner {row[2]} | GC1 {row[12]}")
 
     if not rows:
         print("\nNo completed stages found; nothing written.")
