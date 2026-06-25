@@ -89,73 +89,23 @@ def table_names(table):
     return out
 
 
-def label_of(table):
-    """Nearest short heading text preceding this table (its classification label)."""
-    cur = table
-    for _ in range(6):
-        sib = cur.prev
-        while sib is not None:
-            tag = getattr(sib, "tag", None)
-            if tag and tag not in ("-text", "table", "br"):
-                try:
-                    txt = (sib.text(deep=True, separator=" ", strip=True) or "").strip()
-                except Exception:
-                    txt = ""
-                if 0 < len(txt) <= 30:
-                    return txt
-            sib = sib.prev
-        cur = cur.parent
-        if cur is None:
-            break
-    return ""
-
-
-def kind_of(label):
-    l = label.lower()
-    if "youth" in l or "young" in l or "white" in l:
-        return "youth"
-    if "mountain" in l or "kom" in l or "climb" in l or "polka" in l:
-        return "kom"
-    if "point" in l or "green" in l:
-        return "points"
-    if l in ("gc", "g.c.") or "general" in l or "yellow" in l:
-        return "gc"
-    if "stage" in l or "result" in l:
-        return "stage"
-    return ""
-
-
 def classify(html, debug=False):
     """Return {stage,gc,points,kom,youth} name-lists.
 
-    Primary: label each results table by its preceding heading.
-    Fallback: the first 5 'full' tables (>=12 riders) in DOM order are
-    stage, GC, points, KOM, youth respectively.
+    PCS puts all five standings on one stage page, in DOM order
+    stage, GC, points, KOM, youth, interleaved with small daily sub-tables.
+    The five cumulative standings are the first five results tables with
+    enough riders (>=20); the daily sub-results (n<20) are skipped.
     """
-    tables = HTMLParser(html).css("table.results")
-    by_kind, big = {}, []
-    for i, t in enumerate(tables):
+    kept = []
+    for i, t in enumerate(HTMLParser(html).css("table.results")):
         names = table_names(t)
-        if not names:
-            continue
-        lab = label_of(t)
-        k = kind_of(lab)
         if debug:
-            print(f"    [{i}] n={len(names)} kind={k or '?'} label={lab!r} top3={names[:3]}")
-        if k and k not in by_kind:
-            by_kind[k] = names
-        if len(names) >= 12:
-            big.append(names)
+            print(f"    [{i}] n={len(names)} top3={names[:3]}")
+        if len(names) >= 20:
+            kept.append(names)
     order = ["stage", "gc", "points", "kom", "youth"]
-    out = {}
-    for idx, k in enumerate(order):
-        if k in by_kind:
-            out[k] = by_kind[k]
-        elif idx < len(big):
-            out[k] = big[idx]
-        else:
-            out[k] = []
-    return out
+    return {k: (kept[i] if i < len(kept) else []) for i, k in enumerate(order)}
 
 
 def parse_date(html, n):
