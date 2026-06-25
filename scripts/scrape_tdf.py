@@ -89,22 +89,73 @@ def table_names(table):
     return out
 
 
-def main_standings(html):
-    """Largest results table on the page = the full classification standings."""
-    best = []
-    for t in HTMLParser(html).css("table.results"):
-        nm = table_names(t)
-        if len(nm) > len(best):
-            best = nm
-    return best
+def label_of(table):
+    """Nearest short heading text preceding this table (its classification label)."""
+    cur = table
+    for _ in range(6):
+        sib = cur.prev
+        while sib is not None:
+            tag = getattr(sib, "tag", None)
+            if tag and tag not in ("-text", "table", "br"):
+                try:
+                    txt = (sib.text(deep=True, separator=" ", strip=True) or "").strip()
+                except Exception:
+                    txt = ""
+                if 0 < len(txt) <= 30:
+                    return txt
+            sib = sib.prev
+        cur = cur.parent
+        if cur is None:
+            break
+    return ""
 
 
-def page_standings(url):
-    try:
-        return main_standings(fetch(url))
-    except Exception as e:
-        print(f"  {url} -> ERROR {e}")
-        return []
+def kind_of(label):
+    l = label.lower()
+    if "youth" in l or "young" in l or "white" in l:
+        return "youth"
+    if "mountain" in l or "kom" in l or "climb" in l or "polka" in l:
+        return "kom"
+    if "point" in l or "green" in l:
+        return "points"
+    if l in ("gc", "g.c.") or "general" in l or "yellow" in l:
+        return "gc"
+    if "stage" in l or "result" in l:
+        return "stage"
+    return ""
+
+
+def classify(html, debug=False):
+    """Return {stage,gc,points,kom,youth} name-lists.
+
+    Primary: label each results table by its preceding heading.
+    Fallback: the first 5 'full' tables (>=12 riders) in DOM order are
+    stage, GC, points, KOM, youth respectively.
+    """
+    tables = HTMLParser(html).css("table.results")
+    by_kind, big = {}, []
+    for i, t in enumerate(tables):
+        names = table_names(t)
+        if not names:
+            continue
+        lab = label_of(t)
+        k = kind_of(lab)
+        if debug:
+            print(f"    [{i}] n={len(names)} kind={k or '?'} label={lab!r} top3={names[:3]}")
+        if k and k not in by_kind:
+            by_kind[k] = names
+        if len(names) >= 12:
+            big.append(names)
+    order = ["stage", "gc", "points", "kom", "youth"]
+    out = {}
+    for idx, k in enumerate(order):
+        if k in by_kind:
+            out[k] = by_kind[k]
+        elif idx < len(big):
+            out[k] = big[idx]
+        else:
+            out[k] = []
+    return out
 
 
 def parse_date(html, n):
@@ -124,17 +175,8 @@ HEADER = (["Date", "Stage"] + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", 
 
 
 def main():
-    print("\n=== STAGE 20 TABLE DUMP (kom / youth / points) ===")
-    for suf in ["-kom", "-youth", "-points"]:
-        url = f"race/{RACE}/{YEAR}/stage-20{suf}"
-        try:
-            tables = HTMLParser(fetch(url)).css("table.results")
-            print(f"  {suf}: {len(tables)} tables")
-            for i, t in enumerate(tables):
-                nm = table_names(t)
-                print(f"    [{i}] n={len(nm)} top3={nm[:3]}")
-        except Exception as e:
-            print(f"  {suf}: ERROR {e}")
+    print("\n=== STAGE 20 TABLE LABELS ===")
+    classify(fetch(f"race/{RACE}/{YEAR}/stage-20"), debug=True)
 
     rows = []
     for n in range(1, MAX_STAGES + 1):
@@ -144,17 +186,17 @@ def main():
         except Exception as e:
             print(f"stage {n}: fetch error {e}")
             continue
-        finish = main_standings(html)
-        if not finish:
+        c = classify(html)
+        if not c["stage"]:
             continue
         row = ([parse_date(html, n), n]
-               + pad(finish, 10)
-               + pad(page_standings(b + "-gc"), 10)
-               + pad(page_standings(b + "-points"), 3)
-               + pad(page_standings(b + "-kom"), 3)
-               + pad(page_standings(b + "-youth"), 3))
+               + pad(c["stage"], 10)
+               + pad(c["gc"], 10)
+               + pad(c["points"], 3)
+               + pad(c["kom"], 3)
+               + pad(c["youth"], 3))
         rows.append(row)
-        print(f"stage {n}: {row[0]} | win {row[2]} | GC {row[12]} | KOM {row[24]} | Yth {row[27]}")
+        print(f"stage {n}: {row[0]} | win {row[2]} | GC {row[12]} | Pts {row[22]} | KOM {row[24]} | Yth {row[27]}")
 
     if not rows:
         print("\nNo completed stages found; nothing written.")
