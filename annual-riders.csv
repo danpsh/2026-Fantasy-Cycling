@@ -32,6 +32,7 @@ Samuel Watson,Tanner,1/28/2026,5/5/2026,TRUE,
 Mauro Schmid,Tanner,5/5/2026,,TRUE,Michael Matthews
 Michael Valgren,Tanner,5/5/2026,,TRUE,Julian Alaphilippe
 Sepp Kuss,Tanner,5/5/2026,,TRUE,Samuel Watson
+Davide Piganzoli,6/30/26,,TRUE,Jan Christen
 Joao Almeida,Daniel,1/9/2026,,,
 Mads Pedersen,Daniel,1/9/2026,,,
 Remco Evenepoel,Daniel,1/9/2026,,,
@@ -59,9 +60,12 @@ Michael Storer,Daniel,1/9/2026,,,
 Pavel Bittner,Daniel,1/9/2026,5/5/2026,TRUE,
 Tobias Lund Andresen,Daniel,1/28/2026,,,
 Dylan Groenewegen,Daniel,1/28/2026,,,
-Lorenzo Fortunato,Daniel,1/28/2026,,,
-Santiago Buitrago,Daniel,1/28/2026,,,
+Lorenzo Fortunato,Daniel,1/28/2026,6/30/26,,
+Santiago Buitrago,Daniel,1/28/2026,6/30/26,,
 Cian Uijtdebroeks,Daniel,1/28/2026,,,
 Dorian Godon,Daniel,5/5/2026,,TRUE,Olav Kooij
-Ethan Vernon,Daniel,5/5/2026,,TRUE,Richard Carapaz
+Ethan Vernon,Daniel,5/5/2026,6/30/26,TRUE,Richard Carapaz
 Orluis Aular,Daniel,5/5/2026,,TRUE,Pavel Bittner
+Olav Kooij,6/30/26,,TRUE,Santiago Buitrago
+Richard Carapaz,6/30/26,,TRUE,Ethan Vernon
+Max Kanter,6/30/26,,TRUE,Lorenzo Fortunato
