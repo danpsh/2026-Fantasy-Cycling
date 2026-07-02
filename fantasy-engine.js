@@ -116,12 +116,13 @@
     'Jersey': { 1: 12, 2: 8, 3: 4 }
   };
   // TdF-only stage scoring (adopted for 2026 TdF only — Giro/Vuelta keep the default above)
+  // 12 places deep, per league ruling.
   const TDF_STAGE_SCORING = { 1: 12, 2: 10, 3: 9, 4: 8, 5: 7, 6: 6, 7: 5, 8: 4, 9: 3, 10: 2, 11: 1, 12: 1 };
   const REPL = { 1: 1, 2: 1, 3: 1, 4: .9, 5: .9, 6: .8, 7: .8, 8: .7, 9: .7, 10: .6, 11: .6, 12: .6, 13: .5, 14: .5, 15: .5, 16: .5, 17: .5, 18: .5, 19: .5, 20: .5 };
   // Replacement-penalty cutoff: subs added ON OR AFTER this date score reduced GC + zero
   // jersey. Per-race (passed via cfg.repcut); this is only the fallback default.
   const DEFAULT_REPCUT = Date.UTC(2026, 4, 16);
-  const STAGE_COLS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+  const STAGE_COLS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th'];
 
   function computeGrandTour(ridersCsvText, resultsRows, cfg) {
     cfg = cfg || {};
