@@ -80,6 +80,7 @@
     return rows;
   }
   function rowsToObjs(rows) {
+    if (!rows || !rows.length) return [];
     const h = rows[0].map(x => (x || '').trim());
     return rows.slice(1).filter(r => r.length && r.some(x => x !== '' && x != null))
       .map(r => { const o = {}; h.forEach((k, i) => o[k] = r[i] !== undefined ? r[i] : ''); return o; });
@@ -157,8 +158,7 @@
     }
     raw.forEach(r => r.match_name = norm(r.res_rider));
     const allStages = [...new Set(stageMeta.map(x => x.s))].sort((a, b) => a - b);
-    if (!allStages.length) return null;
-    const latest = Math.max(...allStages);
+    const latest = allStages.length ? Math.max(...allStages) : null;
 
     const byMatch = {}; riders.forEach(r => { (byMatch[r.match_name] = byMatch[r.match_name] || []).push(r); });
     const STAGE_SCORE = cfg.stageScoring || GT_SCORING['Stage Result'];
@@ -188,8 +188,8 @@
     // totals + meta
     const tot = {}; owners.forEach(o => tot[o] = 0); proc.forEach(p => tot[p.owner] += p.pts);
     const dT = r1(tot.Daniel || 0), tT = r1(tot.Tanner || 0);
-    const lastMeta = stageMeta.find(x => x.s === latest);
-    const meta = { race: cfg.race || '', year: cfg.year || 2026, stagesDone: latest, lastDate: fmtDate(lastMeta.date), daniel: dT, tanner: tT, leader: dT >= tT ? 'Daniel' : 'Tanner', lead: Math.abs(r1(dT - tT)) };
+    const lastMeta = latest != null ? stageMeta.find(x => x.s === latest) : null;
+    const meta = { race: cfg.race || '', year: cfg.year || 2026, stagesDone: latest || 0, lastDate: lastMeta ? fmtDate(lastMeta.date) : 'Pre-race', daniel: dT, tanner: tT, leader: dT >= tT ? 'Daniel' : 'Tanner', lead: Math.abs(r1(dT - tT)) };
 
     // trajectory + duels
     const stageRes = {}, snap = {}; allStages.forEach(s => { stageRes[s] = { Daniel: 0, Tanner: 0 }; snap[s] = { Daniel: 0, Tanner: 0 }; });
@@ -390,11 +390,11 @@
   // Returns derived data object, or null if this race has no data files yet.
   async function loadGrandTour(race) {
     const cfg = GT_CONFIG[race]; if (!cfg) return null;
-    let csv, buf;
-    try { [csv, buf] = await Promise.all([fetchText(cfg.riders), fetchBuf(cfg.results)]); }
-    catch (e) { return null; }
+    let csv;
+    try { csv = await fetchText(cfg.riders); } catch (e) { return null; }
+    let rows = [];
+    try { const buf = await fetchBuf(cfg.results); rows = await xlsxRows(buf); } catch (e) {}
     try {
-      const rows = await xlsxRows(buf);
       return computeGrandTour(csv, rows, cfg);
     } catch (e) { console.error('[FantasyEngine] grand tour compute failed', e); return null; }
   }
