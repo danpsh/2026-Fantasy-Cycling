@@ -13,11 +13,19 @@ their URL slug and mapped to canonical roster spelling from tdf-startlist.js.
 import os
 import re
 import json
+import time
 import unicodedata
 import urllib.request
 
 from selectolax.parser import HTMLParser
 from openpyxl import Workbook
+
+# curl_cffi impersonates a real Chrome TLS/HTTP2 fingerprint, which gets past
+# ProCyclingStats' Cloudflare block (plain urllib gets 403 from datacenter IPs).
+try:
+    from curl_cffi import requests as cffi_requests
+except Exception:
+    cffi_requests = None
 
 YEAR = os.environ.get("YEAR", "2026")
 OUT = os.environ.get("OUT", "tdf-results.xlsx")
@@ -45,11 +53,15 @@ def pkey(s):
 
 
 def load_canon():
+    # tdf-startlist.js is a JS object literal (unquoted keys), not JSON, so pull
+    # rider names with a regex rather than json.loads.
     try:
         with open("tdf-startlist.js", "r", encoding="utf-8") as f:
             t = f.read()
-        t = t[t.index("{"):t.rindex("}") + 1]
-        canon = {pkey(r["name"]): r["name"] for r in json.loads(t).get("riders", [])}
+        names = re.findall(r'(?:"name"|name)\s*:\s*"([^"]+)"', t)
+        canon = {pkey(n): n for n in names}
+        if not canon:
+            raise ValueError("no rider names found")
         print(f"loaded {len(canon)} canonical names from tdf-startlist.js")
         return canon
     except Exception as e:
@@ -60,11 +72,30 @@ def load_canon():
 CANON = load_canon()
 
 
-def fetch(url):
+def fetch(url, tries=3):
     full = "https://www.procyclingstats.com/" + url
-    req = urllib.request.Request(full, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read().decode("utf-8", "replace")
+    headers = {
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.procyclingstats.com/",
+    }
+    last = None
+    for i in range(tries):
+        try:
+            if cffi_requests is not None:
+                r = cffi_requests.get(full, headers=headers, impersonate="chrome", timeout=30)
+                if r.status_code == 200:
+                    return r.text
+                last = f"HTTP {r.status_code}"
+            else:
+                req = urllib.request.Request(full, headers=headers)
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    return resp.read().decode("utf-8", "replace")
+        except Exception as e:
+            last = str(e)
+        time.sleep(2 * (i + 1))
+    raise RuntimeError(f"fetch failed for {url}: {last}")
 
 
 def name_from_href(href):
@@ -139,14 +170,20 @@ def main():
         c = classify(html)
         if not c["stage"]:
             continue
+        # Stage 1 is a TTT: the PCS "stage" table ranks by TEAM (whole squads tie),
+        # which distorts a 2-manager fantasy league. By league rule, stage 1 placement
+        # points are awarded off the individual GC times instead.
+        stage_place = c["gc"] if n == 1 else c["stage"]
+        if n == 1:
+            print("stage 1 (TTT): using individual GC times for stage placements")
         row = ([parse_date(html, n), n]
-               + pad(c["stage"], 10)
+               + pad(stage_place, 10)
                + pad(c["gc"], 10)
                + pad(c["points"], 3)
                + pad(c["kom"], 3)
                + pad(c["youth"], 3))
         rows.append(row)
-        print(f"stage {n}: {row[0]} | win {row[2]} | GC {row[12]} | Pts {row[22]} | KOM {row[24]} | Yth {row[27]}")
+        print(f"stage {n}: {row[0]} | win {row[2]} | GC {row[12]} | Pts {row[22]} | KOM {row[25]} | Yth {row[28]}")
 
     if not rows:
         print("\nNo completed stages found; nothing written.")
