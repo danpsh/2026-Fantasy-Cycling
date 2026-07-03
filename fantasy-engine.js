@@ -64,6 +64,26 @@
   }
   async function xlsxRows(arrayBuffer) { return readXlsxBuffer(await unzip(arrayBuffer)); }
 
+  // Read EVERY worksheet keyed by its tab name (via workbook.xml + rels).
+  function readXlsxSheetsByName(files) {
+    const shared = files['xl/sharedStrings.xml'] ? parseShared(dec(files['xl/sharedStrings.xml'])) : [];
+    const wb = files['xl/workbook.xml'] ? dec(files['xl/workbook.xml']) : '';
+    const rels = files['xl/_rels/workbook.xml.rels'] ? dec(files['xl/_rels/workbook.xml.rels']) : '';
+    const relMap = {};
+    [...rels.matchAll(/<Relationship\b[^>]*>/g)].forEach(t => { const id = /Id="([^"]+)"/.exec(t[0]), tg = /Target="([^"]+)"/.exec(t[0]); if (id && tg) relMap[id[1]] = tg[1]; });
+    const out = {};
+    [...wb.matchAll(/<sheet\b[^>]*>/g)].forEach(t => {
+      const nm = /name="([^"]+)"/.exec(t[0]), rid = /r:id="([^"]+)"/.exec(t[0]);
+      if (!nm || !rid) return;
+      let tg = relMap[rid[1]]; if (!tg) return;
+      tg = tg.replace(/^\//, '');
+      const f = files['xl/' + tg] || files[Object.keys(files).find(n => n.endsWith('/' + tg.split('/').pop()))];
+      if (f) out[nm[1].replace(/&amp;/g, '&')] = parseSheet(dec(f), shared);
+    });
+    return out;
+  }
+  async function xlsxSheets(arrayBuffer) { return readXlsxSheetsByName(await unzip(arrayBuffer)); }
+
   function parseCsv(text) {
     const rows = []; let i = 0, f = '', row = [], q = false;
     const pf = () => { row.push(f); f = ''; }; const pr = () => { rows.push(row); row = []; };
@@ -124,11 +144,13 @@
   const DEFAULT_REPCUT = Date.UTC(2026, 4, 16);
   const STAGE_COLS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th'];
 
-  function computeGrandTour(ridersCsvText, resultsRows, cfg) {
+  function computeGrandTour(ridersInput, resultsRows, cfg) {
     cfg = cfg || {};
     const REPCUT = cfg.repcut != null ? cfg.repcut : DEFAULT_REPCUT;
+    // riders input may be CSV text OR already-parsed rows (from an xlsx tab)
+    const asRows = v => Array.isArray(v) ? v : parseCsv(v);
     // riders
-    const riders = rowsToObjs(parseCsv(ridersCsvText)).map((r, idx) => ({
+    const riders = rowsToObjs(asRows(ridersInput)).map((r, idx) => ({
       rider_name: r.rider_name, owner: r.owner, add_date: r.add_date,
       drop_date: (r.drop_date || '').trim() || null,
       is_replacement: ['true', '1', 'yes'].includes(String(r.is_replacement).trim().toLowerCase()),
@@ -271,9 +293,11 @@
   };
   const FAR_FUTURE = Date.UTC(2026, 11, 31);
 
-  function computeAnnual(ridersCsvText, scheduleCsvText, resultsRows) {
+  function computeAnnual(ridersInput, scheduleInput, resultsRows) {
+    // riders / schedule inputs may be CSV text OR already-parsed rows (from xlsx tabs)
+    const asRows = v => Array.isArray(v) ? v : parseCsv(v);
     // riders
-    const riders = rowsToObjs(parseCsv(ridersCsvText)).map((r, i) => ({
+    const riders = rowsToObjs(asRows(ridersInput)).map((r, i) => ({
       rider_name: r.rider_name, owner: r.owner,
       add: parseDate(r.add_date) != null ? parseDate(r.add_date) : Date.UTC(2026, 0, 1),
       drop: parseDate(r.drop_date),
@@ -295,7 +319,7 @@
     riders.forEach(r => r.effSlot = r.replFor ? effSlot(r) : r.slot);
 
     // schedule
-    const schedRows = rowsToObjs(parseCsv(scheduleCsvText));
+    const schedRows = rowsToObjs(asRows(scheduleInput));
     const schedInfo = {}; schedRows.forEach(s => schedInfo[(s.race_name || '').trim()] = { tier: (s.tier || '').trim(), type: (s.race_type || '').trim(), date: (s.date || '').trim() });
 
     // results -> field
@@ -311,7 +335,7 @@
     // ownership window
     const rosterByMatch = {}; riders.forEach(r => { (rosterByMatch[r.match] = rosterByMatch[r.match] || []).push(r); });
     const ownerStint = (match, dms) => { const list = rosterByMatch[match]; if (!list) return null; for (const r of list) { const dr = r.drop != null ? r.drop : FAR_FUTURE; if (dms >= r.add && dms <= dr) return r; } return null; };
-    const proc = []; field.forEach(f => { const st = ownerStint(f.match, f.date); if (st) proc.push(Object.assign({}, f, { owner: st.owner })); });
+    const proc = []; field.forEach(f => { const st = ownerStint(f.match, f.date); if (st) proc.push(Object.assign({}, f, { owner: st.owner, stintI: st._i })); });
 
     // timeline + totals
     const dates = [...new Set(proc.map(p => p.date))].sort((a, b) => a - b);
@@ -323,15 +347,17 @@
 
     // team pts per owner|match
     const teamPts = {}; proc.forEach(p => { const k = p.owner + '|' + p.match; teamPts[k] = (teamPts[k] || 0) + p.pts; });
+    // per-stint pts (keyed by roster-row index) — a re-added rider scores separately in each add→drop window
+    const stintPts = {}; proc.forEach(p => { stintPts[p.stintI] = (stintPts[p.stintI] || 0) + p.pts; });
 
     // rosters: bases by slot, subs nested beneath their base
     const buildRoster = owner => {
       const mine = riders.filter(r => r.owner === owner);
       const out = [];
       mine.filter(r => !r.replFor).sort((a, b) => a.slot - b.slot).forEach(b => {
-        out.push({ slot: b.slot, rider: b.rider_name, pts: teamPts[owner + '|' + b.match] || 0, isSub: false, dropped: b.drop != null });
+        out.push({ slot: b.slot, rider: b.rider_name, pts: stintPts[b._i] || 0, isSub: false, dropped: b.drop != null });
         mine.filter(r => r.replFor && r.effSlot === b.slot).sort((a, c) => a.add - c.add || a._i - c._i)
-          .forEach(s => out.push({ slot: b.slot, rider: s.rider_name, pts: teamPts[owner + '|' + s.match] || 0, isSub: true, dropped: s.drop != null }));
+          .forEach(s => out.push({ slot: b.slot, rider: s.rider_name, pts: stintPts[s._i] || 0, isSub: true, dropped: s.drop != null }));
       });
       return out;
     };
@@ -359,7 +385,7 @@
     const grp = [[1, 5], [6, 10], [11, 15], [16, 20], [21, 25], [26, 30]];
     const tiers = grp.map(([a, b]) => {
       let d = 0, t = 0;
-      riders.forEach(r => { if (r.effSlot >= a && r.effSlot <= b) { const v = teamPts[r.owner + '|' + r.match] || 0; if (r.owner === 'Daniel') d += v; else if (r.owner === 'Tanner') t += v; } });
+      riders.forEach(r => { if (r.effSlot >= a && r.effSlot <= b) { const v = stintPts[r._i] || 0; if (r.owner === 'Daniel') d += v; else if (r.owner === 'Tanner') t += v; } });
       return { label: 'Picks ' + a + '\u2013' + b, t, d };
     });
 
@@ -383,7 +409,7 @@
   async function fetchBuf(url) { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.arrayBuffer(); }
 
   const GT_CONFIG = {
-    giro: { riders: 'giro-riders.csv', results: 'giro-results.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
+    giro: { config: 'giro.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
     tdf: { riders: 'tdf-riders.csv', results: 'tdf-results.xlsx', race: 'Tour de France', year: 2026, repcut: Date.UTC(2026, 6, 14), stageScoring: TDF_STAGE_SCORING },
     vuelta: { riders: 'vuelta-riders.csv', results: 'vuelta-results.xlsx', race: 'Vuelta a España', year: 2026, repcut: Date.UTC(2026, 8, 1) }
   };
@@ -391,21 +417,34 @@
   // Returns derived data object, or null if this race has no data files yet.
   async function loadGrandTour(race) {
     const cfg = GT_CONFIG[race]; if (!cfg) return null;
-    let csv;
-    try { csv = await fetchText(cfg.riders); } catch (e) { return null; }
-    let rows = [];
-    try { const buf = await fetchBuf(cfg.results); rows = await xlsxRows(buf); } catch (e) {}
+    let ridersInput, rows = [];
+    if (cfg.config) {
+      // combined workbook: Riders + Results tabs in one .xlsx
+      let tabs;
+      try { tabs = await xlsxSheets(await fetchBuf(cfg.config)); } catch (e) { return null; }
+      ridersInput = tabs['Riders'] || tabs['riders'] || [];
+      rows = tabs['Results'] || tabs['results'] || [];
+    } else {
+      try { ridersInput = await fetchText(cfg.riders); } catch (e) { return null; }
+      try { rows = await xlsxRows(await fetchBuf(cfg.results)); } catch (e) {}
+    }
     try {
-      return computeGrandTour(csv, rows, cfg);
+      return computeGrandTour(ridersInput, rows, cfg);
     } catch (e) { console.error('[FantasyEngine] grand tour compute failed', e); return null; }
   }
 
-  const ANNUAL_CONFIG = { riders: 'annual-riders.csv', schedule: 'annual-schedule.csv', results: 'annual-results.xlsx' };
+  // Riders + Schedule live as two tabs in annual-config.xlsx; results stay in their own file.
+  const ANNUAL_CONFIG = { config: 'annual-config.xlsx', results: 'annual-results.xlsx' };
   async function loadAnnual() {
-    let ridersCsv, schedCsv, buf;
-    try { [ridersCsv, schedCsv, buf] = await Promise.all([fetchText(ANNUAL_CONFIG.riders), fetchText(ANNUAL_CONFIG.schedule), fetchBuf(ANNUAL_CONFIG.results)]); }
+    let cfgBuf, resBuf;
+    try { [cfgBuf, resBuf] = await Promise.all([fetchBuf(ANNUAL_CONFIG.config), fetchBuf(ANNUAL_CONFIG.results)]); }
     catch (e) { return null; }
-    try { return computeAnnual(ridersCsv, schedCsv, await xlsxRows(buf)); }
+    try {
+      const tabs = await xlsxSheets(cfgBuf);
+      const ridersRows = tabs['Riders'] || tabs['riders'] || [];
+      const schedRows = tabs['Schedule'] || tabs['schedule'] || [];
+      return computeAnnual(ridersRows, schedRows, await xlsxRows(resBuf));
+    }
     catch (e) { console.error('[FantasyEngine] annual compute failed', e); return null; }
   }
 
@@ -502,6 +541,6 @@
   }
 
   window.FantasyEngine = Object.assign(window.FantasyEngine || {}, {
-    loadGrandTour, computeGrandTour, loadAnnual, computeAnnual, buildTdfRosterCsv, computeRiderLeaderboard, xlsxRows, parseCsv, rowsToObjs, _helpers: { norm, parseDate, fmtDate, fmtMs, r1 }
+    loadGrandTour, computeGrandTour, loadAnnual, computeAnnual, buildTdfRosterCsv, computeRiderLeaderboard, xlsxRows, xlsxSheets, parseCsv, rowsToObjs, _helpers: { norm, parseDate, fmtDate, fmtMs, r1 }
   });
 })();
