@@ -156,9 +156,6 @@ HEADER = (["Date", "Stage"] + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", 
 
 
 def main():
-    print("\n=== STAGE 20 TABLE LABELS ===")
-    classify(fetch(f"race/{RACE}/{YEAR}/stage-20"), debug=True)
-
     rows = []
     for n in range(1, MAX_STAGES + 1):
         b = f"race/{RACE}/{YEAR}/stage-{n}"
