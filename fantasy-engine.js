@@ -126,7 +126,7 @@
     return isNaN(d) ? null : +d;
   }
   const r1 = x => Math.round(x * 10) / 10;
-  const fmtDate = serial => { const d = serialToDate(serial); return MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+  const fmtDate = v => { const ms = parseDate(v); if (ms == null) return ''; const d = new Date(ms); return MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
   const fmtMs = ms => { const d = new Date(ms); return MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
 
   /* ---------- Grand Tour scoring ---------- */
