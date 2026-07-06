@@ -13,7 +13,8 @@ name: Scrape TdF results
 
 on:
   schedule:
-    - cron: "0 19 * 7 *"   # 19:00 UTC daily in July (~2pm CT)
+    - cron: "*/15 15-17 * 7 *"   # every 15 min, 15:00-17:45 UTC = 10:00am-12:45pm CDT (July);
+                                 # idempotent — the first run to catch results commits, rest are no-ops
   workflow_dispatch:
     inputs:
       year:
