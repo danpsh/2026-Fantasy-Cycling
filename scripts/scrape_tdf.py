@@ -110,7 +110,7 @@ def name_from_href(href):
     return canon_lookup(pkey(slug)) or " ".join(w.capitalize() for w in slug.split())
 
 
-def fetch(url, tries=3):
+def fetch(url, tries=5):
     full = "https://www.procyclingstats.com/" + url
     headers = {
         "User-Agent": UA,
@@ -134,17 +134,19 @@ def fetch(url, tries=3):
     for i in range(tries):
         try:
             if cffi_requests is not None:
-                r = cffi_requests.get(target, headers=req_headers, impersonate="chrome", timeout=60)
+                r = cffi_requests.get(target, headers=req_headers, impersonate="chrome", timeout=70)
                 if r.status_code == 200:
                     return r.text
                 last = f"HTTP {r.status_code}"
             else:
                 req = urllib.request.Request(target, headers=req_headers)
-                with urllib.request.urlopen(req, timeout=60) as resp:
+                with urllib.request.urlopen(req, timeout=70) as resp:
                     return resp.read().decode("utf-8", "replace")
         except Exception as e:
             last = str(e)
-        time.sleep(2 * (i + 1))
+        # ScraperAPI 5xx / timeouts are usually transient (PCS load right after a
+        # stage, momentary proxy failure) — back off progressively and retry.
+        time.sleep(6 * (i + 1))
     raise RuntimeError(f"fetch failed for {url}: {last}")
 
 
