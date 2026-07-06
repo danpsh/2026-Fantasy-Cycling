@@ -257,6 +257,17 @@ def main():
     print(f"stages to scrape: {targets}")
 
     stages = load_existing()
+    # Idempotency: in default (today) mode, if the target stage is already
+    # recorded, do nothing — so running every 15 min in the finish window is
+    # cheap. The first run that catches results commits; later runs exit here
+    # with no proxy call and no commit. A forced STAGE always re-scrapes.
+    forced = bool(os.environ.get("STAGE", "").strip())
+    if not forced:
+        pending = [n for n in targets if n not in stages]
+        if not pending:
+            print(f"stage {targets} already recorded; nothing to do.")
+            return
+        targets = pending
     scraped = 0
     for n in targets:
         # Stage 1 is a TTT: on the base stage page the main table is the TEAM
