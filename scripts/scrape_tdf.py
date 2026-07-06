@@ -14,11 +14,13 @@ import os
 import re
 import json
 import time
+import datetime
 import unicodedata
 import urllib.request
+import urllib.parse
 
 from selectolax.parser import HTMLParser
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 # curl_cffi impersonates a real Chrome TLS/HTTP2 fingerprint, which gets past
 # ProCyclingStats' Cloudflare block (plain urllib gets 403 from datacenter IPs).
@@ -33,6 +35,13 @@ RACE = os.environ.get("RACE_SLUG", "tour-de-france")
 MAX_STAGES = int(os.environ.get("MAX_STAGES", "21"))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
+# ProCyclingStats sits behind Cloudflare, which 403s datacenter IPs (i.e. GitHub
+# Actions runners). When SCRAPER_API_KEY is set we route each request through
+# ScraperAPI's residential IP pool to get a clean IP; when it's absent we hit PCS
+# directly (works from a home/residential IP for local runs). Free tier is ~1,000
+# requests/month; a full 21-stage scrape is ~21 requests.
+SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "").strip()
+
 SCHED_2026 = {1: "2026-07-04", 2: "2026-07-05", 3: "2026-07-06", 4: "2026-07-07",
               5: "2026-07-08", 6: "2026-07-09", 7: "2026-07-10", 8: "2026-07-11",
               9: "2026-07-12", 10: "2026-07-14", 11: "2026-07-15", 12: "2026-07-16",
@@ -44,6 +53,7 @@ MONTHS = {m: i for i, m in enumerate(
      "august", "september", "october", "november", "december"], start=1)}
 
 print(f"=== ENV === YEAR={YEAR} OUT={OUT} RACE={RACE}")
+print("=== FETCH === via ScraperAPI proxy" if SCRAPER_API_KEY else "=== FETCH === direct (no proxy key)")
 
 
 def pkey(s):
@@ -80,17 +90,29 @@ def fetch(url, tries=3):
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.procyclingstats.com/",
     }
+    # When a proxy key is present, hand PCS's URL to ScraperAPI and fetch THAT
+    # instead. ScraperAPI supplies a residential IP + solves Cloudflare, then
+    # returns the target page's HTML. render=false (default) is enough for PCS's
+    # server-rendered tables; country_code=us keeps the IP pool consistent.
+    if SCRAPER_API_KEY:
+        target = "https://api.scraperapi.com/?" + urllib.parse.urlencode(
+            {"api_key": SCRAPER_API_KEY, "url": full, "country_code": "us"})
+        req_headers = {"User-Agent": UA}
+    else:
+        target = full
+        req_headers = headers
+
     last = None
     for i in range(tries):
         try:
             if cffi_requests is not None:
-                r = cffi_requests.get(full, headers=headers, impersonate="chrome", timeout=30)
+                r = cffi_requests.get(target, headers=req_headers, impersonate="chrome", timeout=60)
                 if r.status_code == 200:
                     return r.text
                 last = f"HTTP {r.status_code}"
             else:
-                req = urllib.request.Request(full, headers=headers)
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                req = urllib.request.Request(target, headers=req_headers)
+                with urllib.request.urlopen(req, timeout=60) as resp:
                     return resp.read().decode("utf-8", "replace")
         except Exception as e:
             last = str(e)
@@ -150,14 +172,71 @@ def pad(names, n):
     return (names[:n] + [""] * n)[:n]
 
 
-HEADER = (["Date", "Stage"] + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
-          + [f"GC #{i}" for i in range(1, 11)] + [f"Points #{i}" for i in range(1, 4)]
-          + [f"Mountain #{i}" for i in range(1, 4)] + [f"Youth #{i}" for i in range(1, 4)])
+HEADER = (["Date", "Stage"]
+          + ["1st", "2nd", "3rd", "4th", "5th", "6th",
+             "7th", "8th", "9th", "10th", "11th", "12th"])
+NPLACE = 12  # TdF scores the top 12 stage finishers
+
+
+def norm_row(r):
+    """Coerce any stored row to the [Date, Stage, 1st..12th] shape."""
+    r = list(r)
+    date = r[0] if len(r) > 0 else ""
+    stage = r[1] if len(r) > 1 else ""
+    places = [("" if c is None else c) for c in r[2:2 + NPLACE]]
+    return [date, stage] + pad(places, NPLACE)
+
+
+def load_existing():
+    """Read prior stages from OUT so a single-stage run doesn't wipe them."""
+    out = {}
+    if os.path.exists(OUT):
+        try:
+            wb = load_workbook(OUT)
+            ws = wb.active
+            for row in list(ws.iter_rows(values_only=True))[1:]:
+                if row and row[1] not in (None, ""):
+                    try:
+                        out[int(row[1])] = norm_row(row)
+                    except (ValueError, TypeError):
+                        pass
+            print(f"loaded {len(out)} existing stage(s) from {OUT}")
+        except Exception as e:
+            print(f"could not read existing {OUT}: {e}")
+    return out
+
+
+def stages_to_scrape():
+    """Which stage(s) to fetch this run.
+
+    Default: only the stage scheduled for today's date (UTC), so daily runs do
+    one request instead of re-scraping all 21. Overrides via STAGE env:
+      STAGE=8     -> just stage 8 (manual backfill of a single stage)
+      STAGE=1,2   -> stages 1 and 2 (comma list, for testing)
+      STAGE=all   -> every stage 1..MAX_STAGES (full rebuild / testing old years)
+    """
+    forced = os.environ.get("STAGE", "").strip().lower()
+    if forced == "all":
+        return list(range(1, MAX_STAGES + 1))
+    if forced:
+        return [int(x) for x in re.split(r"[,\s]+", forced) if x]
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    rev = {v: k for k, v in SCHED_2026.items()}
+    n = rev.get(today)
+    return [n] if n else []
 
 
 def main():
-    rows = []
-    for n in range(1, MAX_STAGES + 1):
+    targets = stages_to_scrape()
+    if not targets:
+        today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        print(f"\nNo stage scheduled for {today}; nothing to do.")
+        return
+    print(f"stages to scrape: {targets}")
+
+    stages = load_existing()
+    scraped = 0
+    for n in targets:
         b = f"race/{RACE}/{YEAR}/stage-{n}"
         try:
             html = fetch(b)
@@ -166,6 +245,7 @@ def main():
             continue
         c = classify(html)
         if not c["stage"]:
+            print(f"stage {n}: no results table yet (stage not finished?)")
             continue
         # Stage 1 is a TTT: the PCS "stage" table ranks by TEAM (whole squads tie),
         # which distorts a 2-manager fantasy league. By league rule, stage 1 placement
@@ -173,23 +253,20 @@ def main():
         stage_place = c["gc"] if n == 1 else c["stage"]
         if n == 1:
             print("stage 1 (TTT): using individual GC times for stage placements")
-        row = ([parse_date(html, n), n]
-               + pad(stage_place, 10)
-               + pad(c["gc"], 10)
-               + pad(c["points"], 3)
-               + pad(c["kom"], 3)
-               + pad(c["youth"], 3))
-        rows.append(row)
-        print(f"stage {n}: {row[0]} | win {row[2]} | GC {row[12]} | Pts {row[22]} | KOM {row[25]} | Yth {row[28]}")
+        row = [parse_date(html, n), n] + pad(stage_place, NPLACE)
+        stages[n] = row
+        scraped += 1
+        print(f"stage {n}: {row[0]} | win {row[2]} | 12th {row[13]}")
 
-    if not rows:
-        print("\nNo completed stages found; nothing written.")
+    if scraped == 0:
+        print("\nNothing scraped; leaving existing file untouched.")
         return
+
     wb = Workbook(); ws = wb.active; ws.title = "Results"; ws.append(HEADER)
-    for r in rows:
-        ws.append(r)
+    for k in sorted(stages):
+        ws.append(stages[k])
     wb.save(OUT)
-    print(f"\nWrote {len(rows)} stage(s) to {OUT}")
+    print(f"\nWrote {len(stages)} stage(s) to {OUT} ({scraped} new/updated this run)")
 
 
 if __name__ == "__main__":
