@@ -24,6 +24,10 @@ on:
         description: "Output file"
         default: "tdf-results.xlsx"
         required: true
+      stage:
+        description: "Stage(s): blank=today, e.g. 1,2 or all"
+        default: ""
+        required: false
 
 permissions:
   contents: write
@@ -46,6 +50,7 @@ jobs:
         env:
           YEAR: ${{ github.event.inputs.year || '2026' }}
           OUT: ${{ github.event.inputs.out || 'tdf-results.xlsx' }}
+          STAGE: ${{ github.event.inputs.stage }}
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: python scripts/scrape_tdf.py
 
