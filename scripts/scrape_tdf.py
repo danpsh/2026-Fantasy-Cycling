@@ -80,9 +80,34 @@ def load_canon():
 
 
 CANON = load_canon()
+# Sorted longest-first for the prefix fallback below.
+CANON_ITEMS = sorted(CANON.items(), key=lambda kv: -len(kv[0]))
 
 
-def fetch(url, tries=3):
+def canon_lookup(slug_key):
+    """Map a PCS name-key to the roster's canonical spelling.
+
+    PCS frequently carries extra surname parts the roster omits
+    ("juan-ayuso-pesquera" vs roster "Juan Ayuso"). After an exact miss, accept a
+    canonical name that is a prefix of the slug key (or vice versa) — but only if
+    EXACTLY ONE canonical matches, so we never guess between two similar riders.
+    """
+    if slug_key in CANON:
+        return CANON[slug_key]
+    uniq = []
+    for k, nm in CANON_ITEMS:
+        if len(k) >= 6 and (slug_key.startswith(k) or k.startswith(slug_key)):
+            if nm not in uniq:
+                uniq.append(nm)
+    return uniq[0] if len(uniq) == 1 else None
+
+
+def name_from_href(href):
+    m = re.search(r"rider/([^/?#\"]+)", href or "")
+    if not m:
+        return ""
+    slug = m.group(1).replace("-", " ").strip()
+    return canon_lookup(pkey(slug)) or " ".join(w.capitalize() for w in slug.split())
     full = "https://www.procyclingstats.com/" + url
     headers = {
         "User-Agent": UA,
@@ -118,14 +143,6 @@ def fetch(url, tries=3):
             last = str(e)
         time.sleep(2 * (i + 1))
     raise RuntimeError(f"fetch failed for {url}: {last}")
-
-
-def name_from_href(href):
-    m = re.search(r"rider/([^/?#\"]+)", href or "")
-    if not m:
-        return ""
-    slug = m.group(1).replace("-", " ").strip()
-    return CANON.get(pkey(slug)) or " ".join(w.capitalize() for w in slug.split())
 
 
 def table_names(table):
@@ -237,23 +254,26 @@ def main():
     stages = load_existing()
     scraped = 0
     for n in targets:
-        b = f"race/{RACE}/{YEAR}/stage-{n}"
+        # Stage 1 is a TTT: on the base stage page the main table is the TEAM
+        # result, and the individual-GC table there is unreliable to locate by
+        # position. Use PCS's dedicated per-stage GC page instead — its main table
+        # IS the individual GC order (league rule: TTT placements = GC order).
+        if n == 1:
+            b = f"race/{RACE}/{YEAR}/stage-{n}-gc"
+        else:
+            b = f"race/{RACE}/{YEAR}/stage-{n}"
         try:
             html = fetch(b)
         except Exception as e:
             print(f"stage {n}: fetch error {e}")
             continue
-        c = classify(html)
-        if not c["stage"]:
+        names = classify(html)["stage"]  # kept[0] = the page's main standings
+        if not names:
             print(f"stage {n}: no results table yet (stage not finished?)")
             continue
-        # Stage 1 is a TTT: the PCS "stage" table ranks by TEAM (whole squads tie),
-        # which distorts a 2-manager fantasy league. By league rule, stage 1 placement
-        # points are awarded off the individual GC times instead.
-        stage_place = c["gc"] if n == 1 else c["stage"]
         if n == 1:
-            print("stage 1 (TTT): using individual GC times for stage placements")
-        row = [parse_date(html, n), n] + pad(stage_place, NPLACE)
+            print("stage 1 (TTT): using dedicated GC page for individual placements")
+        row = [parse_date(html, n), n] + pad(names, NPLACE)
         stages[n] = row
         scraped += 1
         print(f"stage {n}: {row[0]} | win {row[2]} | 12th {row[13]}")
