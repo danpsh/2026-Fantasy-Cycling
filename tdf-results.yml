@@ -5,6 +5,11 @@ name: Scrape TdF results
 #   standings update even when no one is around.
 # - MANUAL "Run workflow" runs open a PR instead (for testing, e.g. year=2025 +
 #   out=tdf-results-2025-test.xlsx to validate against last year).
+#
+# PCS is behind Cloudflare and blocks datacenter IPs, so requests are routed
+# through ScraperAPI's residential pool. Add a repo secret named SCRAPER_API_KEY
+# (Settings -> Secrets and variables -> Actions). Free tier (~1,000 req/mo) is
+# plenty: a full 21-stage scrape is ~21 requests.
 
 on:
   schedule:
@@ -35,12 +40,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install procyclingstats openpyxl
+        run: pip install procyclingstats openpyxl curl_cffi
 
       - name: Scrape results
         env:
           YEAR: ${{ github.event.inputs.year || '2026' }}
           OUT: ${{ github.event.inputs.out || 'tdf-results.xlsx' }}
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: python scripts/scrape_tdf.py
 
       - name: Publish results (scheduled — auto-commit to main)
