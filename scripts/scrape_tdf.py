@@ -108,6 +108,9 @@ def name_from_href(href):
         return ""
     slug = m.group(1).replace("-", " ").strip()
     return canon_lookup(pkey(slug)) or " ".join(w.capitalize() for w in slug.split())
+
+
+def fetch(url, tries=3):
     full = "https://www.procyclingstats.com/" + url
     headers = {
         "User-Agent": UA,
