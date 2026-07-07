@@ -150,6 +150,38 @@ def fetch(url, tries=5):
     raise RuntimeError(f"fetch failed for {url}: {last}")
 
 
+# ---- accented display names for the annual-league file ----
+# annual-results.xlsx shows rider names verbatim, so we keep their accents
+# ("Tadej Poga\u010dar"). App-side scoring is accent- and case-insensitive but word
+# ORDER matters, so every stored display name must be First-Last AND reduce to the
+# same letter key as the roster's canonical spelling.
+DISPLAY = {}   # pkey(name) -> accented "First Last" display
+
+
+def register_display(raw_text, canonical):
+    """Record an accented spelling for a canonical name, but only when it is
+    provably safe: accept the PCS anchor text (or a word-reordering of it) only if
+    it reduces to the SAME letter key as the canonical name. That guarantees the
+    stored name still matches the roster after the app normalizes it; otherwise we
+    keep nothing and callers fall back to the plain canonical spelling."""
+    if not raw_text or not canonical:
+        return
+    ck = pkey(canonical)
+    toks = raw_text.split()
+    cands = [raw_text]
+    if len(toks) >= 2:
+        cands.append(" ".join([toks[-1]] + toks[:-1]))   # PCS "Last First" -> "First Last"
+        cands.append(" ".join(toks[1:] + [toks[0]]))      # the reverse, just in case
+    for c in cands:
+        if pkey(c) == ck:
+            DISPLAY.setdefault(ck, c)
+            return
+
+
+def display_name(canonical):
+    return DISPLAY.get(pkey(canonical), canonical)
+
+
 def table_names(table):
     body = table.css_first("tbody") or table
     out, seen = [], set()
@@ -161,6 +193,7 @@ def table_names(table):
         if nm and nm not in seen:
             seen.add(nm)
             out.append(nm)
+            register_display(a.text(strip=True), nm)
     return out
 
 
@@ -198,6 +231,25 @@ HEADER = (["Date", "Stage"]
           + ["1st", "2nd", "3rd", "4th", "5th", "6th",
              "7th", "8th", "9th", "10th", "11th", "12th"])
 NPLACE = 12  # TdF scores the top 12 stage finishers
+
+# ---- annual-league mirror ----
+# The Tour is one race inside the season-long annual league, whose results live in
+# annual-results.xlsx with a different shape: Excel date-serial | "Tour de France"
+# | "Stage N" | top 10. Stage 1 (the TTT) is deliberately NOT scored in the annual
+# competition, so it is skipped. Only 'Tour de France' rows are ever touched.
+ANNUAL_OUT = os.environ.get("ANNUAL_OUT", "annual-results.xlsx")
+ANNUAL_RACE = "Tour de France"
+ANN_NPLACE = 10
+EXCEL_EPOCH = datetime.date(1899, 12, 30)
+
+
+def to_serial(datestr):
+    """ISO 'YYYY-MM-DD' -> Excel date serial (int); pass anything else through."""
+    try:
+        y, m, d = (int(x) for x in str(datestr).split("-"))
+        return (datetime.date(y, m, d) - EXCEL_EPOCH).days
+    except Exception:
+        return datestr
 
 
 def norm_row(r):
@@ -246,6 +298,73 @@ def stages_to_scrape():
     rev = {v: k for k, v in SCHED_2026.items()}
     n = rev.get(today)
     return [n] if n else []
+
+
+def update_annual(stages):
+    """Mirror the TdF stages into annual-results.xlsx (skipping Stage 1, the TTT).
+
+    Every non-Tour row the user maintains by hand is preserved exactly — only
+    'Tour de France' rows are rewritten, from the full merged stage set. Names
+    carry accents when a safe accented spelling is known (seeded from the existing
+    Tour rows so hand-entered accents survive, plus anything captured live)."""
+    if not os.path.exists(ANNUAL_OUT):
+        print(f"annual: {ANNUAL_OUT} not found; skipping.")
+        return
+    try:
+        wb = load_workbook(ANNUAL_OUT)
+    except Exception as e:
+        print(f"annual: could not open {ANNUAL_OUT}: {e}; skipping.")
+        return
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        print("annual: empty sheet; skipping.")
+        return
+    header = rows[0]
+
+    def col(name):
+        for i, h in enumerate(header):
+            if h is not None and str(h).strip().lower() == name.lower():
+                return i
+        return None
+
+    ci_race = col("Race Name")
+    ci_names = [col(c) for c in ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]]
+    if ci_race is None:
+        print("annual: no 'Race Name' column; skipping.")
+        return
+
+    def is_tdf(r):
+        return r[ci_race] is not None and str(r[ci_race]).strip() == ANNUAL_RACE
+
+    # Seed accented spellings from the existing Tour rows (so Stage 2/3 accents
+    # entered by hand survive even though only today's stage is re-scraped live).
+    for r in rows[1:]:
+        if is_tdf(r):
+            for ci in ci_names:
+                if ci is not None and ci < len(r) and r[ci]:
+                    nm = str(r[ci]).strip()
+                    DISPLAY.setdefault(pkey(nm), nm)
+
+    # Delete existing Tour rows bottom-up (keeps every other row + its formatting).
+    idx = [i for i, r in enumerate(ws.iter_rows(values_only=True), start=1)
+           if i > 1 and is_tdf(r)]
+    for i in reversed(idx):
+        ws.delete_rows(i, 1)
+
+    # Append fresh Tour rows from the merged stage set (skip Stage 1 / TTT).
+    added = 0
+    for n in sorted(stages):
+        if n < 2:
+            continue
+        row = stages[n]
+        date_iso, names = row[0], row[2:2 + NPLACE]
+        placed = [display_name(x) for x in names[:ANN_NPLACE]]
+        placed = (placed + [""] * ANN_NPLACE)[:ANN_NPLACE]
+        ws.append([to_serial(date_iso), ANNUAL_RACE, f"Stage {n}"] + placed)
+        added += 1
+    wb.save(ANNUAL_OUT)
+    print(f"annual: mirrored {added} Tour stage row(s) into {ANNUAL_OUT} (Stage 1 skipped)")
 
 
 def main():
@@ -303,6 +422,11 @@ def main():
         ws.append(stages[k])
     wb.save(OUT)
     print(f"\nWrote {len(stages)} stage(s) to {OUT} ({scraped} new/updated this run)")
+
+    # Mirror into the annual league — only for the live default file/year, so
+    # year-2025 test runs (custom OUT) never disturb annual-results.xlsx.
+    if OUT == "tdf-results.xlsx" and YEAR == "2026":
+        update_annual(stages)
 
 
 if __name__ == "__main__":
