@@ -61,7 +61,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tdf-results.xlsx
+          git add tdf-results.xlsx annual-results.xlsx
           if git diff --staged --quiet; then
             echo "No new results to publish."
           else
@@ -81,3 +81,4 @@ jobs:
           branch: tdf-results-update
           add-paths: |
             ${{ github.event.inputs.out || 'tdf-results.xlsx' }}
+            annual-results.xlsx
