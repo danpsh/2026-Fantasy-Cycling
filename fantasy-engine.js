@@ -405,8 +405,19 @@
   }
 
   /* ---------- loaders ---------- */
-  async function fetchText(url) { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.text(); }
-  async function fetchBuf(url) { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.arrayBuffer(); }
+  // Retry transient network/HTTP failures a few times with backoff. A cold page
+  // open (preview or fresh Pages deploy) can lose the first fetch race; without
+  // this the load promise rejects and the page sits blank until a manual reload.
+  async function _retry(fn, tries = 4) {
+    let last;
+    for (let i = 0; i < tries; i++) {
+      try { return await fn(); }
+      catch (e) { last = e; await new Promise(r => setTimeout(r, 300 * (i + 1))); }
+    }
+    throw last;
+  }
+  async function fetchText(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.text(); }); }
+  async function fetchBuf(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.arrayBuffer(); }); }
 
   const GT_CONFIG = {
     giro: { config: 'giro.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
