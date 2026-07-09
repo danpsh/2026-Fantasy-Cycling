@@ -227,10 +227,16 @@ def pad(names, n):
     return (names[:n] + [""] * n)[:n]
 
 
+NPLACE = 12  # top stage finishers scored
+NGC = 10     # GC standing places scored
+NJER = 3     # jersey places scored, per jersey (points / mountain / youth)
 HEADER = (["Date", "Stage"]
           + ["1st", "2nd", "3rd", "4th", "5th", "6th",
-             "7th", "8th", "9th", "10th", "11th", "12th"])
-NPLACE = 12  # TdF scores the top 12 stage finishers
+             "7th", "8th", "9th", "10th", "11th", "12th"]
+          + [f"GC #{i}" for i in range(1, NGC + 1)]
+          + [f"Points #{i}" for i in range(1, NJER + 1)]
+          + [f"Mountain #{i}" for i in range(1, NJER + 1)]
+          + [f"Youth #{i}" for i in range(1, NJER + 1)])
 
 # ---- annual-league mirror ----
 # The Tour is one race inside the season-long annual league, whose results live in
@@ -253,12 +259,21 @@ def to_serial(datestr):
 
 
 def norm_row(r):
-    """Coerce any stored row to the [Date, Stage, 1st..12th] shape."""
-    r = list(r)
+    """Coerce any stored row to the full shape:
+    [Date, Stage, stage×12, GC×10, Points×3, Mountain×3, Youth×3].
+    Old 14-column files (stage only) pad the GC/jersey sections with blanks;
+    a full re-scrape repopulates them."""
+    r = [("" if c is None else c) for c in list(r)]
     date = r[0] if len(r) > 0 else ""
     stage = r[1] if len(r) > 1 else ""
-    places = [("" if c is None else c) for c in r[2:2 + NPLACE]]
-    return [date, stage] + pad(places, NPLACE)
+    o = 2
+    stagep = r[o:o + NPLACE]; o += NPLACE
+    gcp = r[o:o + NGC]; o += NGC
+    ptsp = r[o:o + NJER]; o += NJER
+    komp = r[o:o + NJER]; o += NJER
+    ythp = r[o:o + NJER]; o += NJER
+    return ([date, stage] + pad(stagep, NPLACE) + pad(gcp, NGC)
+            + pad(ptsp, NJER) + pad(komp, NJER) + pad(ythp, NJER))
 
 
 def load_existing():
@@ -402,16 +417,30 @@ def main():
         except Exception as e:
             print(f"stage {n}: fetch error {e}")
             continue
-        names = classify(html)["stage"]  # kept[0] = the page's main standings
-        if not names:
-            print(f"stage {n}: no results table yet (stage not finished?)")
-            continue
+        c = classify(html)
         if n == 1:
+            # -gc page: its main table IS the individual GC order. Placements =
+            # GC order (league TTT rule) and the GC columns mirror it; jerseys
+            # are not meaningful after a TTT, so they stay blank.
+            gc_names = c["stage"]
+            if not gc_names:
+                print(f"stage {n}: no results table yet (stage not finished?)")
+                continue
             print("stage 1 (TTT): using dedicated GC page for individual placements")
-        row = [parse_date(html, n), n] + pad(names, NPLACE)
+            row = ([parse_date(html, n), n]
+                   + pad(gc_names, NPLACE) + pad(gc_names, NGC)
+                   + pad([], NJER) + pad([], NJER) + pad([], NJER))
+        else:
+            if not c["stage"]:
+                print(f"stage {n}: no results table yet (stage not finished?)")
+                continue
+            row = ([parse_date(html, n), n]
+                   + pad(c["stage"], NPLACE) + pad(c["gc"], NGC)
+                   + pad(c["points"], NJER) + pad(c["kom"], NJER) + pad(c["youth"], NJER))
         stages[n] = row
         scraped += 1
-        print(f"stage {n}: {row[0]} | win {row[2]} | 12th {row[13]}")
+        gc1 = row[2 + NPLACE] or "-"
+        print(f"stage {n}: {row[0]} | win {row[2]} | 12th {row[13]} | GC1 {gc1}")
 
     if scraped == 0:
         print("\nNothing scraped; leaving existing file untouched.")
