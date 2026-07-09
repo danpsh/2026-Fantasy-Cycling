@@ -382,6 +382,31 @@ def update_annual(stages):
     print(f"annual: mirrored {added} Tour stage row(s) into {ANNUAL_OUT} (Stage 1 skipped)")
 
 
+def main_table(html):
+    """The main (largest) classification table on a dedicated PCS page."""
+    return classify(html)["stage"]
+
+
+def fetch_html(n, suffix):
+    """Fetch one PCS page for a stage; None on failure. suffix '' = stage result,
+    'gc'/'points'/'kom'/'youth' = that classification's dedicated page."""
+    url = f"race/{RACE}/{YEAR}/stage-{n}" + (f"-{suffix}" if suffix else "")
+    try:
+        return fetch(url)
+    except Exception as e:
+        print(f"stage {n} {suffix or 'stage'}: fetch error {e}")
+        return None
+
+
+def classification(n, suffix):
+    """Main table of a stage's dedicated classification page, [] if unavailable.
+    PCS renders GC/points/KOM/youth behind JS tabs, so they are NOT in the base
+    stage page HTML — each must be fetched from its own URL. A not-yet-posted
+    classification simply returns [] (blank columns), never raising."""
+    h = fetch_html(n, suffix)
+    return main_table(h) if h else []
+
+
 def main():
     targets = stages_to_scrape()
     if not targets:
@@ -404,39 +429,37 @@ def main():
         targets = pending
     scraped = 0
     for n in targets:
-        # Stage 1 is a TTT: on the base stage page the main table is the TEAM
-        # result, and the individual-GC table there is unreliable to locate by
-        # position. Use PCS's dedicated per-stage GC page instead — its main table
-        # IS the individual GC order (league rule: TTT placements = GC order).
         if n == 1:
-            b = f"race/{RACE}/{YEAR}/stage-{n}-gc"
-        else:
-            b = f"race/{RACE}/{YEAR}/stage-{n}"
-        try:
-            html = fetch(b)
-        except Exception as e:
-            print(f"stage {n}: fetch error {e}")
-            continue
-        c = classify(html)
-        if n == 1:
-            # -gc page: its main table IS the individual GC order. Placements =
-            # GC order (league TTT rule) and the GC columns mirror it; jerseys
-            # are not meaningful after a TTT, so they stay blank.
-            gc_names = c["stage"]
+            # Stage 1 is a TTT: the base stage page's main table is the TEAM
+            # result, so use the dedicated GC page — its main table is the
+            # individual GC order (league rule: TTT placements = GC order).
+            # Jerseys are not meaningful after a TTT, so they stay blank.
+            html = fetch_html(1, "gc")
+            gc_names = main_table(html) if html else []
             if not gc_names:
-                print(f"stage {n}: no results table yet (stage not finished?)")
+                print("stage 1: no results table yet (stage not finished?)")
                 continue
             print("stage 1 (TTT): using dedicated GC page for individual placements")
-            row = ([parse_date(html, n), n]
+            row = ([parse_date(html, 1), 1]
                    + pad(gc_names, NPLACE) + pad(gc_names, NGC)
                    + pad([], NJER) + pad([], NJER) + pad([], NJER))
         else:
-            if not c["stage"]:
+            # Each classification lives on its own PCS URL (the stage page only
+            # carries the stage result server-side; the rest are JS tabs).
+            html = fetch_html(n, "")
+            stage_names = main_table(html) if html else []
+            if not stage_names:
                 print(f"stage {n}: no results table yet (stage not finished?)")
                 continue
+            gc_names = classification(n, "gc")
+            pts_names = classification(n, "points")
+            kom_names = classification(n, "kom")
+            yth_names = classification(n, "youth")
             row = ([parse_date(html, n), n]
-                   + pad(c["stage"], NPLACE) + pad(c["gc"], NGC)
-                   + pad(c["points"], NJER) + pad(c["kom"], NJER) + pad(c["youth"], NJER))
+                   + pad(stage_names, NPLACE) + pad(gc_names, NGC)
+                   + pad(pts_names, NJER) + pad(kom_names, NJER) + pad(yth_names, NJER))
+            print(f"stage {n} tables: gc={len(gc_names)} pts={len(pts_names)} "
+                  f"kom={len(kom_names)} yth={len(yth_names)}")
         stages[n] = row
         scraped += 1
         gc1 = row[2 + NPLACE] or "-"
