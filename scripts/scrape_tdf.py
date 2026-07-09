@@ -388,23 +388,15 @@ def main_table(html):
 
 
 def fetch_html(n, suffix):
-    """Fetch one PCS page for a stage; None on failure. suffix '' = stage result,
-    'gc'/'points'/'kom'/'youth' = that classification's dedicated page."""
+    """Fetch one PCS page for a stage; None on failure. suffix '' = the base
+    stage page (carries all five classifications once settled), 'gc' = the
+    dedicated GC page (used for the stage-1 TTT)."""
     url = f"race/{RACE}/{YEAR}/stage-{n}" + (f"-{suffix}" if suffix else "")
     try:
         return fetch(url)
     except Exception as e:
         print(f"stage {n} {suffix or 'stage'}: fetch error {e}")
         return None
-
-
-def classification(n, suffix):
-    """Main table of a stage's dedicated classification page, [] if unavailable.
-    PCS renders GC/points/KOM/youth behind JS tabs, so they are NOT in the base
-    stage page HTML — each must be fetched from its own URL. A not-yet-posted
-    classification simply returns [] (blank columns), never raising."""
-    h = fetch_html(n, suffix)
-    return main_table(h) if h else []
 
 
 def main():
@@ -431,35 +423,32 @@ def main():
     for n in targets:
         if n == 1:
             # Stage 1 is a TTT: the base stage page's main table is the TEAM
-            # result, so use the dedicated GC page — its main table is the
-            # individual GC order (league rule: TTT placements = GC order).
-            # Jerseys are not meaningful after a TTT, so they stay blank.
+            # result, so use the dedicated GC page for individual placements
+            # (league rule: TTT placements = GC order).
             html = fetch_html(1, "gc")
-            gc_names = main_table(html) if html else []
-            if not gc_names:
+            names = main_table(html) if html else []
+            if not names:
                 print("stage 1: no results table yet (stage not finished?)")
                 continue
             print("stage 1 (TTT): using dedicated GC page for individual placements")
-            row = ([parse_date(html, 1), 1]
-                   + pad(gc_names, NPLACE) + pad(gc_names, NGC)
-                   + pad([], NJER) + pad([], NJER) + pad([], NJER))
         else:
-            # Each classification lives on its own PCS URL (the stage page only
-            # carries the stage result server-side; the rest are JS tabs).
             html = fetch_html(n, "")
-            stage_names = main_table(html) if html else []
-            if not stage_names:
+            names = main_table(html) if html else []
+            if not names:
                 print(f"stage {n}: no results table yet (stage not finished?)")
                 continue
-            gc_names = classification(n, "gc")
-            pts_names = classification(n, "points")
-            kom_names = classification(n, "kom")
-            yth_names = classification(n, "youth")
-            row = ([parse_date(html, n), n]
-                   + pad(stage_names, NPLACE) + pad(gc_names, NGC)
-                   + pad(pts_names, NJER) + pad(kom_names, NJER) + pad(yth_names, NJER))
-            print(f"stage {n} tables: gc={len(gc_names)} pts={len(pts_names)} "
-                  f"kom={len(kom_names)} yth={len(yth_names)}")
+        # GC + jersey columns are left BLANK: PCS renders those classification
+        # tabs with JavaScript (seeded server-side with the stage result), so a
+        # non-JS scrape only ever gets the stage podium back for them — writing
+        # that would fake GC/jersey points. Stage placements are the only
+        # reliably-scrapeable data from the live pages. The wide header is kept
+        # so the columns exist for a future JS-render pass.
+        row = ([parse_date(html, n), n]
+               + pad(names, NPLACE)
+               + pad([], NGC) + pad([], NJER) + pad([], NJER) + pad([], NJER))
+        stages[n] = row
+        scraped += 1
+        print(f"stage {n}: {row[0]} | win {row[2]} | 12th {row[13]}")
         stages[n] = row
         scraped += 1
         gc1 = row[2 + NPLACE] or "-"
