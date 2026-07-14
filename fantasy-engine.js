@@ -282,7 +282,35 @@
     const breakdown = {};
     proc.forEach(p => { const k = p.rider_name + '|' + p.owner; (breakdown[k] = breakdown[k] || []).push({ stage: p.Stage, cat: p.Category, rank: p.rank, pts: p.pts }); });
 
-    return { meta, trajectory, duels, leaderboard, rostersByOwner, topPerf, freeAgents, stages, breakdown };
+    // stage GC/jersey MOVEMENT (display-only): for each rostered rider ranked in a
+    // classification, the value gained/lost vs the previous stage that has data for
+    // that classification. Uses the raw position-value tables (5th->4th = 25-20 = +5).
+    // Computed only where both stages have the rider ranked; blank otherwise.
+    const moveVal = (cat, rank) => (cat === 'GC Standing' ? (GT_SCORING['GC Standing'][rank] || 0) : (GT_SCORING.Jersey[rank] || 0));
+    const catShortMv = { 'GC Standing': 'GC', 'Points Jersey': 'Points', 'Mountain Jersey': 'KOM', 'Youth Jersey': 'Youth' };
+    const catStages = {};
+    raw.forEach(e => { if (e.Category !== 'Stage Result') { (catStages[e.Category] = catStages[e.Category] || new Set()).add(e.Stage); } });
+    Object.keys(catStages).forEach(c => { catStages[c] = [...catStages[c]].sort((a, b) => a - b); });
+    const rankByKey = {};
+    procFull.forEach(p => { if (p.Category === 'Stage Result') return; const k = p.owner + '|' + p.rider_name + '|' + p.Category; (rankByKey[k] = rankByKey[k] || {})[p.Stage] = p.rank; });
+    const stageMoves = {};
+    Object.entries(rankByKey).forEach(([k, ranks]) => {
+      const parts = k.split('|'), owner = parts[0], rider = parts[1], cat = parts[2];
+      const ds = catStages[cat] || [];
+      for (let i = 1; i < ds.length; i++) {
+        const rp = ranks[ds[i - 1]], rc = ranks[ds[i]];
+        let pts, fromRank, toRank;
+        if (rc != null && rp != null) { pts = r1(moveVal(cat, rc) - moveVal(cat, rp)); fromRank = rp; toRank = rc; }        // moved within table
+        else if (rc != null && rp == null) { pts = r1(moveVal(cat, rc)); fromRank = null; toRank = rc; }                   // entered the table
+        else if (rc == null && rp != null) { pts = r1(-moveVal(cat, rp)); fromRank = rp; toRank = null; }                  // dropped out of the table
+        else continue;
+        if (pts === 0) continue;
+        (stageMoves[ds[i]] = stageMoves[ds[i]] || []).push({ owner, rider, cat: catShortMv[cat], fromRank, toRank, pts });
+      }
+    });
+    Object.values(stageMoves).forEach(arr => arr.sort((a, b) => b.pts - a.pts));
+
+    return { meta, trajectory, duels, leaderboard, rostersByOwner, topPerf, freeAgents, stages, breakdown, stageMoves };
   }
 
   /* ---------- Annual league scoring (tier-based) ---------- */
