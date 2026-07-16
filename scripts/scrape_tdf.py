@@ -110,7 +110,7 @@ def name_from_href(href):
     return canon_lookup(pkey(slug)) or " ".join(w.capitalize() for w in slug.split())
 
 
-def fetch(url, tries=5):
+def fetch(url, tries=3):
     full = "https://www.procyclingstats.com/" + url
     headers = {
         "User-Agent": UA,
@@ -134,14 +134,20 @@ def fetch(url, tries=5):
     for i in range(tries):
         try:
             if cffi_requests is not None:
-                r = cffi_requests.get(target, headers=req_headers, impersonate="chrome", timeout=70)
+                r = cffi_requests.get(target, headers=req_headers, impersonate="chrome", timeout=90)
                 if r.status_code == 200:
                     return r.text
                 last = f"HTTP {r.status_code}"
+                if r.status_code in (401, 403) and SCRAPER_API_KEY:
+                    # 401/403 through the proxy = out of credits or bad key, NOT a
+                    # transient blip. Retrying wastes time and (worse) burns credits.
+                    raise RuntimeError(f"proxy rejected ({r.status_code}) — likely OUT OF API CREDITS; not retrying")
             else:
                 req = urllib.request.Request(target, headers=req_headers)
-                with urllib.request.urlopen(req, timeout=70) as resp:
+                with urllib.request.urlopen(req, timeout=90) as resp:
                     return resp.read().decode("utf-8", "replace")
+        except RuntimeError:
+            raise
         except Exception as e:
             last = str(e)
         # ScraperAPI 5xx / timeouts are usually transient (PCS load right after a
@@ -406,6 +412,15 @@ def main():
         print(f"\nNo stage scheduled for {today}; nothing to do.")
         return
     print(f"stages to scrape: {targets}")
+
+    # CREDIT GUARD: a normal run does 1 stage. A wide range (e.g. a fat-fingered
+    # STAGE=1-21) is what drained the free tier before. Refuse >MAX_PER_RUN stages
+    # unless ALLOW_BULK=1 is explicitly set, so an accidental backfill can't run.
+    MAX_PER_RUN = int(os.environ.get("MAX_PER_RUN", "3"))
+    if len(targets) > MAX_PER_RUN and os.environ.get("ALLOW_BULK", "").strip() not in ("1", "true", "yes"):
+        print(f"\nREFUSING: {len(targets)} stages requested (> MAX_PER_RUN={MAX_PER_RUN}). "
+              f"Each stage costs API credits. To run a big backfill on purpose, set ALLOW_BULK=1.")
+        return
 
     stages = load_existing()
     # Idempotency: in default (today) mode, if the target stage is already
