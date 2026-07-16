@@ -274,6 +274,29 @@
       .forEach(e => { const tbl = e.Category === 'Stage Result' ? STAGE_SCORE : (GT_SCORING[e.Category] || GT_SCORING.Jersey); faMap[e.res_rider] = (faMap[e.res_rider] || 0) + (tbl[e.rank] || 0); });
     const freeAgents = Object.keys(faMap).map(name => ({ name, pts: r1(faMap[name]) })).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts);
 
+    // stats: wins/podiums/top10 among owned riders' stage results
+    const stat = owner => {
+      const ps = proc.filter(p => p.owner === owner && p.dispCat === 'Stage Result');
+      return { wins: ps.filter(p => p.rank === 1).length, podiums: ps.filter(p => p.rank <= 3).length, top10: ps.filter(p => p.rank <= 10).length };
+    };
+    const stats = { daniel: stat('Daniel'), tanner: stat('Tanner') };
+
+    // tiers: points by draft-pick group of 5 (subs counted under their base slot, via team_pick)
+    const maxSlot = Math.max(1, ...riders.map(r => r.team_pick || 1));
+    const grp = []; for (let a = 1; a <= maxSlot; a += 5) grp.push([a, Math.min(a + 4, maxSlot)]);
+    const tiers = grp.map(([a, b]) => {
+      let d = 0, t = 0;
+      riders.forEach(r => { if (r.team_pick >= a && r.team_pick <= b) { const k = r.rider_name + '|' + r.owner + '|' + (r.add_date || '') + '|' + (r.drop_date || ''); const v = stintPts[k] || 0; if (r.owner === 'Daniel') d += v; else if (r.owner === 'Tanner') t += v; } });
+      return { label: 'Picks ' + a + '\u2013' + b, d: r1(d), t: r1(t) };
+    });
+
+    // whole-field rider leaderboard: every scoring rider (owned + free agents),
+    // merged across roles, ranked by total points.
+    const rbMap = {};
+    leaderboard.forEach(o => { const k = o.name + '|' + o.owner; const g = rbMap[k] || (rbMap[k] = { rider: o.name, owner: o.owner, pts: 0, dropped: true }); g.pts = r1(g.pts + o.total); if (!o.dropped) g.dropped = false; });
+    freeAgents.forEach(f => { rbMap[f.name + '|Free Agent'] = { rider: f.name, owner: 'Free Agent', pts: f.pts, dropped: false }; });
+    const riderBoard = Object.values(rbMap).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts).map((x, i) => Object.assign({ rank: i + 1 }, x));
+
     // stages
     const ownerAtStage = (mn, sdate) => { const ms = byMatch[mn]; if (!ms) return null; for (const r of ms) { const ad = parseDate(r.add_date), dd = r.drop_date ? parseDate(r.drop_date) : null; if (sdate >= ad && (dd == null || sdate <= dd)) return r.owner; } return null; };
     const stages = stageMeta.map(sm => ({ s: sm.s, date: fmtDate(sm.date), winner: sm.winner, winnerOwner: ownerAtStage(norm(sm.winner), parseDate(sm.date)) }));
@@ -310,7 +333,7 @@
     });
     Object.values(stageMoves).forEach(arr => arr.sort((a, b) => b.pts - a.pts));
 
-    return { meta, trajectory, duels, leaderboard, rostersByOwner, topPerf, freeAgents, stages, breakdown, stageMoves };
+    return { meta, trajectory, duels, leaderboard, riderBoard, rostersByOwner, topPerf, freeAgents, stages, breakdown, stageMoves, stats, tiers };
   }
 
   /* ---------- Annual league scoring (tier-based) ---------- */
@@ -383,9 +406,9 @@
       const mine = riders.filter(r => r.owner === owner);
       const out = [];
       mine.filter(r => !r.replFor).sort((a, b) => a.slot - b.slot).forEach(b => {
-        out.push({ slot: b.slot, rider: b.rider_name, pts: stintPts[b._i] || 0, isSub: false, dropped: b.drop != null });
+        out.push({ slot: b.slot, rider: b.rider_name, pts: stintPts[b._i] || 0, isSub: false, dropped: b.drop != null, isRep: false, replaces: '', addLabel: b.add != null ? fmtMs(b.add) : '', addMs: b.add != null ? b.add : 0 });
         mine.filter(r => r.replFor && r.effSlot === b.slot).sort((a, c) => a.add - c.add || a._i - c._i)
-          .forEach(s => out.push({ slot: b.slot, rider: s.rider_name, pts: stintPts[s._i] || 0, isSub: true, dropped: s.drop != null }));
+          .forEach(s => out.push({ slot: b.slot, rider: s.rider_name, pts: stintPts[s._i] || 0, isSub: true, dropped: s.drop != null, isRep: true, replaces: s.replFor || '', addLabel: s.add != null ? fmtMs(s.add) : '', addMs: s.add != null ? s.add : 0 }));
       });
       return out;
     };
