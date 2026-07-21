@@ -1,23 +1,23 @@
 rider_name,owner,add_date,drop_date,is_replacement,rider_role,replaces_rider
 Tadej Pogacar,Daniel,2026-07-02,,False,GC,
-Jonas Vingegaard,Tanner,2026-07-02,,False,GC,
+Jonas Vingegaard,Tanner,2026-07-02,2026-07-20,False,GC,
 Isaac Del Toro,Tanner,2026-07-02,,False,GC,
 Paul Seixas,Daniel,2026-07-02,,False,GC,
 Florian Lipowitz,Tanner,2026-07-02,,False,GC,
 Jasper Philipsen,Daniel,2026-07-02,,False,Sprinter,
 Remco Evenepoel,Tanner,2026-07-02,,False,GC,
-Tim Merlier,Daniel,2026-07-02,,False,Sprinter,
+Tim Merlier,Daniel,2026-07-02,2026-07-20,False,Sprinter,
 Mads Pedersen,Tanner,2026-07-02,,False,Stage Hunter,
 Juan Ayuso,Daniel,2026-07-02,,False,GC,
 Mathieu Van Der Poel,Tanner,2026-07-02,,False,Stage Hunter,
 Tobias Halland Johannessen,Daniel,2026-07-02,,False,GC,
 Tom Pidcock,Tanner,2026-07-02,,False,GC,
 Olav Kooij,Daniel,2026-07-02,,False,Sprinter,
-Matteo Jorgenson,Tanner,2026-07-02,,False,GC,
+Matteo Jorgenson,Tanner,2026-07-02,2026-07-20,False,GC,
 Biniam Girmay,Daniel,2026-07-02,,False,Sprinter,
 Romain Gregoire,Tanner,2026-07-02,,False,Stage Hunter,
 Arnaud De Lie,Daniel,2026-07-02,2026-07-06,False,Sprinter,
-Ben Healy,Tanner,2026-07-02,,False,Stage Hunter,
+Ben Healy,Tanner,2026-07-02,2026-07-20,False,Stage Hunter,
 Cian Uijtdebroeks,Daniel,2026-07-02,2026-07-09,False,GC,
 Thymen Arensman,Tanner,2026-07-02,2026-07-13,False,GC,
 Lenny Martinez,Daniel,2026-07-02,,False,Stage Hunter,
@@ -47,3 +47,4 @@ Sean Quinn,Tanner,2026-07-13,,True,Stage Hunter,Derek Gee-West
 Valentin Paret-Peintre,Daniel,2026-07-13,,True,Stage Hunter,Magnus Cort
 Ramses Debruyne,Tanner,2026-07-13,,True,Stage Hunter,Thymen Arensman
 Thymen Arensman,Daniel,2026-07-13,,True,Stage Hunter,Michael Matthews
+Jordan Jegat
