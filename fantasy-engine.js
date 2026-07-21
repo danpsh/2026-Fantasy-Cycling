@@ -322,9 +322,9 @@
       const parts = k.split('|'), owner = parts[0], rider = parts[1], cat = parts[2];
       const ds = catStages[cat] || [];
       const vals = valByKey[k] || {};
-      for (let i = 1; i < ds.length; i++) {
-        const rp = ranks[ds[i - 1]], rc = ranks[ds[i]];
-        const vp = vals[ds[i - 1]], vc = vals[ds[i]];
+      for (let i = 0; i < ds.length; i++) {
+        const rp = i === 0 ? null : ranks[ds[i - 1]], rc = ranks[ds[i]];
+        const vp = i === 0 ? null : vals[ds[i - 1]], vc = vals[ds[i]];
         let pts, fromRank, toRank;
         if (rc != null && rp != null) { pts = r1((vc || 0) - (vp || 0)); fromRank = rp; toRank = rc; }        // moved within table
         else if (rc != null && rp == null) { pts = r1(vc || 0); fromRank = null; toRank = rc; }                // entered the table
