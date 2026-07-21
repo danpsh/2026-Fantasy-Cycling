@@ -307,25 +307,28 @@
 
     // stage GC/jersey MOVEMENT (display-only): for each rostered rider ranked in a
     // classification, the value gained/lost vs the previous stage that has data for
-    // that classification. Uses the raw position-value tables (5th->4th = 25-20 = +5).
+    // that classification. Uses the SAME already-penalized points as `pts` above (so a
+    // late-cutoff replacement's zeroed jersey / reduced GC value is respected here too
+    // — previously this recomputed off the raw rank table and ignored the penalty).
     // Computed only where both stages have the rider ranked; blank otherwise.
-    const moveVal = (cat, rank) => (cat === 'GC Standing' ? (GT_SCORING['GC Standing'][rank] || 0) : (GT_SCORING.Jersey[rank] || 0));
     const catShortMv = { 'GC Standing': 'GC', 'Points Jersey': 'Points', 'Mountain Jersey': 'KOM', 'Youth Jersey': 'Youth' };
     const catStages = {};
     raw.forEach(e => { if (e.Category !== 'Stage Result') { (catStages[e.Category] = catStages[e.Category] || new Set()).add(e.Stage); } });
     Object.keys(catStages).forEach(c => { catStages[c] = [...catStages[c]].sort((a, b) => a - b); });
-    const rankByKey = {};
-    procFull.forEach(p => { if (p.Category === 'Stage Result') return; const k = p.owner + '|' + p.rider_name + '|' + p.Category; (rankByKey[k] = rankByKey[k] || {})[p.Stage] = p.rank; });
+    const rankByKey = {}, valByKey = {};
+    procFull.forEach(p => { if (p.Category === 'Stage Result') return; const k = p.owner + '|' + p.rider_name + '|' + p.Category; (rankByKey[k] = rankByKey[k] || {})[p.Stage] = p.rank; (valByKey[k] = valByKey[k] || {})[p.Stage] = p.pts; });
     const stageMoves = {};
     Object.entries(rankByKey).forEach(([k, ranks]) => {
       const parts = k.split('|'), owner = parts[0], rider = parts[1], cat = parts[2];
       const ds = catStages[cat] || [];
+      const vals = valByKey[k] || {};
       for (let i = 1; i < ds.length; i++) {
         const rp = ranks[ds[i - 1]], rc = ranks[ds[i]];
+        const vp = vals[ds[i - 1]], vc = vals[ds[i]];
         let pts, fromRank, toRank;
-        if (rc != null && rp != null) { pts = r1(moveVal(cat, rc) - moveVal(cat, rp)); fromRank = rp; toRank = rc; }        // moved within table
-        else if (rc != null && rp == null) { pts = r1(moveVal(cat, rc)); fromRank = null; toRank = rc; }                   // entered the table
-        else if (rc == null && rp != null) { pts = r1(-moveVal(cat, rp)); fromRank = rp; toRank = null; }                  // dropped out of the table
+        if (rc != null && rp != null) { pts = r1((vc || 0) - (vp || 0)); fromRank = rp; toRank = rc; }        // moved within table
+        else if (rc != null && rp == null) { pts = r1(vc || 0); fromRank = null; toRank = rc; }                // entered the table
+        else if (rc == null && rp != null) { pts = r1(-(vp || 0)); fromRank = rp; toRank = null; }             // dropped out of the table
         else continue;
         if (pts === 0) continue;
         (stageMoves[ds[i]] = stageMoves[ds[i]] || []).push({ owner, rider, cat: catShortMv[cat], fromRank, toRank, pts });
@@ -472,7 +475,7 @@
 
   const GT_CONFIG = {
     giro: { config: 'giro.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
-    tdf: { riders: 'tdf-riders.csv', results: 'tdf-results.xlsx', race: 'Tour de France', year: 2026, repcut: Date.UTC(2026, 6, 14), stageScoring: TDF_STAGE_SCORING },
+    tdf: { riders: 'tdf-riders.csv', results: 'tdf-results.xlsx', race: 'Tour de France', year: 2026, repcut: Date.UTC(2026, 6, 13), stageScoring: TDF_STAGE_SCORING },
     vuelta: { riders: 'vuelta-riders.csv', results: 'vuelta-results.xlsx', race: 'Vuelta a España', year: 2026, repcut: Date.UTC(2026, 8, 1) }
   };
 
