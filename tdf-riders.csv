@@ -39,7 +39,7 @@ Antonio Tiberi,Tanner,2026-07-02,2026-07-13,False,GC,
 Pavel Bittner,Daniel,2026-07-02,,False,Sprinter,
 Davide Piganzoli,Tanner,2026-07-02,,False,GC,
 Jonas Abrahamsen,Daniel,2026-07-02,2026-07-13,False,Stage Hunter,
-Ilan Van Wilder,Daniel,2026-07-07,,True,GC,Arnaud De Lie
+Ilan Van Wilder,Daniel,2026-07-07,2026-07-25,True,GC,Arnaud De Lie
 Egan Bernal,Daniel,2026-07-10,2026-07-20,True,GC,Cian Uijtdebroeks
 Huub Artz,Tanner,2026-07-13,,True,Sprinter,Antonio Tiberi
 Lennert Van Eetvelt,Daniel,2026-07-13,2026-07-20,True,Stage Hunter,Jonas Abrahamsen
@@ -57,3 +57,5 @@ Maxim Van Gils,Daniel,2026-07-20,,True,Stage Hunter,Lennert Van Eetvelt
 Brandon McNulty,Tanner,2026-07-20,2026-07-24,True,Stage Hunter,Matteo Jorgenson
 Jai Hindley,Tanner,2026-07-22,,True,Stage Hunter,Florian Lipowitz
 Mauro Schmid,Tanner,2026-07-24,,True,Stage Hunter,Brandon McNulty
+Jasper Stuyven,Daniel,2026-07-25,,True,Stage Hunter,Ilan Van Wilder
+
