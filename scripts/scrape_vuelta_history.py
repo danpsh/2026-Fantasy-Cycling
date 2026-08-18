@@ -59,15 +59,33 @@ def pkey(s):
 
 
 def name_from_href(href, anchor_text):
-    # No canonical roster for historical years — just title-case the PCS anchor
-    # text (already "First Last" in the visible table cell).
+    """PCS sometimes glues SURNAME (all caps) directly onto Given Name with no
+    separating space/newline in the extracted text (e.g. "CORTINAIván" for
+    "García Cortina" + "Iván"). Detect the surname/given-name boundary via case:
+    a run of uppercase letters immediately followed by [Upper][lower...] marks
+    where a given name starts, even mid-token."""
     t = (anchor_text or "").strip()
-    if t:
-        return " ".join(w.capitalize() if not w.isupper() else w.capitalize() for w in t.split())
-    m = re.search(r"rider/([^/?#\"]+)", href or "")
-    if not m:
-        return ""
-    return " ".join(w.capitalize() for w in m.group(1).replace("-", " ").split())
+    if not t:
+        m = re.search(r"rider/([^/?#\"]+)", href or "")
+        if not m:
+            return ""
+        t = m.group(1).replace("-", " ")
+    surnames, givens = [], []
+    for tok in t.split():
+        lm = re.search(r"[a-zà-ÿ]", tok)
+        if lm and lm.start() > 0:
+            cut = lm.start() - 1
+            surn, giv = tok[:cut], tok[cut:]
+            if surn:
+                surnames.append(surn.capitalize())
+            givens.append(giv[:1].upper() + giv[1:])
+        elif lm and lm.start() == 0:
+            givens.append(tok[:1].upper() + tok[1:])
+        else:
+            surnames.append(tok.capitalize())
+    given_full = " ".join(givens)
+    surname_full = " ".join(surnames)
+    return (given_full + " " + surname_full).strip() if given_full else surname_full
 
 
 def fetch(url, tries=3):
@@ -137,7 +155,37 @@ def pad(names, n):
     return (names[:n] + [""] * n)[:n]
 
 
-NPLACE, NGC, NJER = 10, 10, 3
+def classify_lists(html):
+    """Largest results table(s) on a PCS page, in DOM order (kept if >=10 rows)."""
+    kept = []
+    for t in HTMLParser(html).css("table.results"):
+        names = table_names(t)
+        if len(names) >= 10:
+            kept.append(names)
+    return kept
+
+
+def fetch_final_standings():
+    """Final GC + jersey standings, fetched from PCS's dedicated classification
+    pages (race/.../gc, /points, /kom, /youth) — these render statically even
+    though the per-stage tabs need JS, since they ARE the whole page's content."""
+    result = {"gc": [], "points": [], "kom": [], "youth": []}
+    for key, suffix in [("gc", "gc"), ("points", "points"), ("kom", "kom"), ("youth", "youth")]:
+        try:
+            html = fetch(f"race/{RACE}/{YEAR}/{suffix}")
+        except Exception as e:
+            print(f"final {key}: fetch error {e}")
+            continue
+        lists = classify_lists(html)
+        if lists:
+            result[key] = lists[0]
+            print(f"final {key}: {len(lists[0])} riders, #1 {lists[0][0]}")
+        else:
+            print(f"final {key}: no table found")
+    return result
+
+
+NGC, NJER = 10, 3
 HEADER = (["Year", "Date", "Stage"]
           + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
           + [f"GC #{i}" for i in range(1, NGC + 1)]
@@ -182,6 +230,16 @@ def main():
     if not year_rows:
         print("\nNothing scraped; leaving existing file untouched.")
         return
+
+    # Final GC + jersey standings (from the race-is-over classification pages) go
+    # on the LAST scraped stage's row only — that is the snapshot the scoring
+    # engine reads (GC/jerseys count once, at the latest stage).
+    final = fetch_final_standings()
+    last = year_rows[-1]
+    last[3 + NPLACE:3 + NPLACE + NGC] = pad(final["gc"], NGC)
+    last[3 + NPLACE + NGC:3 + NPLACE + NGC + NJER] = pad(final["points"], NJER)
+    last[3 + NPLACE + NGC + NJER:3 + NPLACE + NGC + 2 * NJER] = pad(final["kom"], NJER)
+    last[3 + NPLACE + NGC + 2 * NJER:3 + NPLACE + NGC + 3 * NJER] = pad(final["youth"], NJER)
 
     all_rows = other_rows + year_rows
     all_rows.sort(key=lambda r: (str(r[0]), int(r[2]) if str(r[2]).isdigit() else 0))
