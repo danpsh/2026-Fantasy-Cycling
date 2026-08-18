@@ -1,4 +1,4 @@
-window.TDF_STARTLIST = {
+window.VUELTA_STARTLIST = {
  "race": "La Vuelta a Espana",
  "year": 2026,
  "updated": "2026-08-18",
