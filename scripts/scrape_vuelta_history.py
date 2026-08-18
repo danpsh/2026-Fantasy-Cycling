@@ -186,6 +186,7 @@ def fetch_final_standings():
 
 
 NGC, NJER = 10, 3
+NPLACE = 10
 HEADER = (["Year", "Date", "Stage"]
           + ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
           + [f"GC #{i}" for i in range(1, NGC + 1)]
