@@ -462,16 +462,18 @@
   // Retry transient network/HTTP failures a few times with backoff. A cold page
   // open (preview or fresh Pages deploy) can lose the first fetch race; without
   // this the load promise rejects and the page sits blank until a manual reload.
+  // A 404 is NOT transient (the file genuinely doesn't exist yet, e.g. a race's
+  // results file before it starts) — fail fast instead of burning ~3s retrying.
   async function _retry(fn, tries = 4) {
     let last;
     for (let i = 0; i < tries; i++) {
       try { return await fn(); }
-      catch (e) { last = e; await new Promise(r => setTimeout(r, 300 * (i + 1))); }
+      catch (e) { last = e; if (e && e.status === 404) throw e; await new Promise(r => setTimeout(r, 300 * (i + 1))); }
     }
     throw last;
   }
-  async function fetchText(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.text(); }); }
-  async function fetchBuf(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url); return r.arrayBuffer(); }); }
+  async function fetchText(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) { const e = new Error('HTTP ' + r.status + ' ' + url); e.status = r.status; throw e; } return r.text(); }); }
+  async function fetchBuf(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) { const e = new Error('HTTP ' + r.status + ' ' + url); e.status = r.status; throw e; } return r.arrayBuffer(); }); }
 
   const GT_CONFIG = {
     giro: { config: 'giro.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
