@@ -1,14 +1,14 @@
 rider_name,owner,add_date,drop_date,is_replacement,rider_role,replaces_rider
 Felix Gall,Daniel,2026-08-21,,False,GC,
 Oscar Onley,Tanner,2026-08-21,,False,GC,
-Joao Almeida,Daniel,2026-08-21,,False,GC,
+Joao Almeida,Daniel,2026-08-21,2026-08-31,False,GC,
 Mattias Skjelmose,Tanner,2026-08-21,,False,GC,
 Mads Pedersen,Daniel,2026-08-21,,False,Stage Hunter,
 Matthew Brennan,Tanner,2026-08-21,,False,Sprinter,
 Wout Van Aert,Daniel,2026-08-21,,False,Stage Hunter,
 Enric Mas,Tanner,2026-08-21,,False,GC,
 Richard Carapaz,Daniel,2026-08-21,,False,GC,
-Kaden Groves,Tanner,2026-08-21,,False,Sprinter,
+Kaden Groves,Tanner,2026-08-21,2026-08-31,False,Sprinter,
 Jordi Meeus,Daniel,2026-08-21,,False,Sprinter,
 Bryan Coquard,Tanner,2026-08-21,,False,Sprinter,
 Matthew Riccitello,Daniel,2026-08-21,,False,Stage Hunter,
@@ -17,16 +17,16 @@ Tobias Halland Johannessen,Daniel,2026-08-21,,False,GC,
 Primoz Roglic,Tanner,2026-08-21,,False,GC,
 Jay Vine,Daniel,2026-08-21,,False,Stage Hunter,
 Cian Uijtdebroeks,Tanner,2026-08-21,2026-08-26,False,GC,
-Jorgen Nordhagen,Daniel,2026-08-21,,False,GC,
+Jorgen Nordhagen,Daniel,2026-08-21,2026-08-31,False,GC,
 Finn Fisher-Black,Tanner,2026-08-21,,False,Stage Hunter,
 Sepp Kuss,Daniel,2026-08-21,,False,GC,
-Luke Tuckwell,Tanner,2026-08-21,,False,Stage Hunter,
+Luke Tuckwell,Tanner,2026-08-21,2026-08-31,False,Stage Hunter,
 Joshua Tarling,Daniel,2026-08-21,2026-08-27,False,Stage Hunter,
 Ethan Hayter,Tanner,2026-08-21,,False,Sprinter,
 Lorenzo Fortunato,Daniel,2026-08-21,,False,Stage Hunter,
 Ivan Romeo,Tanner,2026-08-21,,False,Stage Hunter,
 Andreas Leknessund,Daniel,2026-08-21,,False,Stage Hunter,
-Carlos Rodriguez,Tanner,2026-08-21,,False,GC,
+Carlos Rodriguez,Tanner,2026-08-21,2026-08-31,False,GC,
 Stefan Kung,Daniel,2026-08-21,,False,Stage Hunter,
 Harold Tejada,Tanner,2026-08-21,,False,GC,
 Raul Garcia Pierna,Daniel,2026-08-21,,False,Stage Hunter,
@@ -37,8 +37,14 @@ Pablo Torres,Daniel,2026-08-21,2026-08-30,False,Stage Hunter,
 Alberto Dainese,Tanner,2026-08-21,,False,Stage Hunter,
 Axel Laurance,Daniel,2026-08-21,,False,Stage Hunter,
 Jarno Widar,Tanner,2026-08-21,,False,Stage Hunter,
-Ben Tulett,Daniel,2026-08-21,,False,Stage Hunter,
+Ben Tulett,Daniel,2026-08-21,2026-08-31,False,Stage Hunter,
 Christophe Laporte,Tanner,2026-08-21,,False,Stage Hunter,
 Ramses Debruyne,Tanner,2026-08-26,,True,GC,Cian Uijtdebroeks
 Clément Berthet,Daniel,2026-08-27,,True,GC,Joshua Tarling
 Jakob Omrzel,Daniel,2026-08-30,,True,GC,Pablo Torres
+Cristián Rodríguez,Daniel,2026-08-31,,True,GC,Joao Almeida
+Alessandro Romele,Tanner,2026-08-31,,True,Sprinter,Kaden Groves
+Ben Turner,Tanner,2026-08-31,,True,Sprinter,Luke Tuckwell
+Hugo Hofstetter,Daniel,2026-08-31,,True,Sprinter,Jorgen Nordhagen
+Léo Bisiaux,Tanner,2026-08-31,,True,GC,Carlos Rodriguez
+Pau Miquel,Daniel,2026-08-31,,True,Sprinter,Ben Tulett
