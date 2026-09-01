@@ -478,7 +478,7 @@
   const GT_CONFIG = {
     giro: { config: 'giro.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
     tdf: { riders: 'tdf-riders.csv', results: 'tdf-results.xlsx', race: 'Tour de France', year: 2026, repcut: Date.UTC(2026, 6, 13), stageScoring: TDF_STAGE_SCORING },
-    vuelta: { riders: 'vuelta-riders.csv', results: 'vuelta-results.xlsx', race: 'Vuelta a España', year: 2026, repcut: Date.UTC(2026, 8, 1), stageScoring: TDF_STAGE_SCORING }
+    vuelta: { riders: 'vuelta-riders.csv', results: 'vuelta-results.xlsx', race: 'Vuelta a España', year: 2026, repcut: Date.UTC(2026, 7, 31), stageScoring: TDF_STAGE_SCORING }
   };
 
   // Returns derived data object, or null if this race has no data files yet.
