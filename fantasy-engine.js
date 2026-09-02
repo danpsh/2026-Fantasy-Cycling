@@ -267,12 +267,13 @@
     proc.forEach(p => { const o = np[p.owner]; const g = o[p.rider_name] || (o[p.rider_name] = { name: p.rider_name, pts: 0, dropped: false }); g.pts += p.pts; if (p.drop_date) g.dropped = true; });
     const topPerf = {}; owners.forEach(o => topPerf[o] = Object.values(np[o]).map(x => ({ name: x.name, pts: r1(x.pts), dropped: !activeNO[x.name + '|' + o] })).sort((a, b) => b.pts - a.pts).slice(0, 10));
 
-    // free agents: unowned riders, same snapshot rule, base scoring
-    const owned = new Set(riders.map(r => r.match_name));
-    const faMap = {};
-    raw.filter(e => (e.Category === 'Stage Result' || e.Stage === latest) && !owned.has(e.match_name))
-      .forEach(e => { const tbl = e.Category === 'Stage Result' ? STAGE_SCORE : (GT_SCORING[e.Category] || GT_SCORING.Jersey); faMap[e.res_rider] = (faMap[e.res_rider] || 0) + (tbl[e.rank] || 0); });
-    const freeAgents = Object.keys(faMap).map(name => ({ name, pts: r1(faMap[name]) })).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts);
+    // free agents: NOT currently rostered, full-season points; teamPts = subset earned while owned
+    const activeRiderNames = new Set(Object.keys(activeNO).map(k => k.slice(0, k.lastIndexOf('|'))));
+    const faTotalMap = {}, faOwnedMap = {}, faOwnerMap = {};
+    raw.forEach(e => { const tbl = e.Category === 'Stage Result' ? STAGE_SCORE : (GT_SCORING[e.Category] || GT_SCORING.Jersey); faTotalMap[e.res_rider] = (faTotalMap[e.res_rider] || 0) + (tbl[e.rank] || 0); });
+    proc.forEach(p => { faOwnedMap[p.rider_name] = (faOwnedMap[p.rider_name] || 0) + p.pts; faOwnerMap[p.rider_name] = p.owner; });
+    const freeAgents = Object.keys(faTotalMap).filter(name => !activeRiderNames.has(name) && faTotalMap[name] > 0)
+      .map(name => ({ name, pts: r1(faTotalMap[name]), teamPts: r1(faOwnedMap[name] || 0), teamOwner: faOwnerMap[name] || '' })).sort((a, b) => b.pts - a.pts);
 
     // stats: wins/podiums/top10 among owned riders' stage results
     const stat = owner => {
@@ -361,6 +362,9 @@
     const owners = [...new Set(riders.map(r => r.owner))];
     const cum = {}; riders.forEach(r => { if (!r.replFor) { cum[r.owner] = (cum[r.owner] || 0) + 1; r.slot = cum[r.owner]; } });
     const ownerByMatch = {}; riders.forEach(r => { if (ownerByMatch[r.match] == null) ownerByMatch[r.match] = r.owner; });
+    // currently-active owner per rider (null/undropped stint not superseded by a later replacement) — used to tell true free agents from riders just dropped
+    const replTargetsAO = {}; riders.forEach(r => { if (r.replFor) { const key = r.owner + '|' + norm(r.replFor); if (replTargetsAO[key] == null || r.add > replTargetsAO[key]) replTargetsAO[key] = r.add; } });
+    const activeOwnerByMatch = {}; riders.forEach(r => { if (r.drop != null) return; const repAfter = replTargetsAO[r.owner + '|' + r.match]; if (repAfter != null && repAfter > r.add) return; activeOwnerByMatch[r.match] = r.owner; });
     const baseByON = {}; riders.forEach(r => { if (!r.replFor) baseByON[r.owner + '|' + r.match] = r; });
     const effSlot = r => {
       let cur = r, g = 0;
@@ -420,11 +424,11 @@
     // leaderboard: whole field by season points; team = points captured while owned
     const seasonByName = {}, order = [];
     field.forEach(f => { if (seasonByName[f.rider] == null) { seasonByName[f.rider] = 0; order.push(f.rider); } seasonByName[f.rider] += f.pts; });
-    const teamByMatch = {}; proc.forEach(p => { teamByMatch[p.match] = (teamByMatch[p.match] || 0) + p.pts; });
-    const lb = order.map(name => { const mt = norm(name); const owner = ownerByMatch[mt] || 'Free Agent'; return { rider: name, owner, season: seasonByName[name], team: owner === 'Free Agent' ? 0 : (teamByMatch[mt] || 0) }; })
+    const teamByMatch = {}, teamOwnerByMatch = {}; proc.forEach(p => { teamByMatch[p.match] = (teamByMatch[p.match] || 0) + p.pts; teamOwnerByMatch[p.match] = p.owner; });
+    const lb = order.map(name => { const mt = norm(name); const owner = activeOwnerByMatch[mt] || 'Free Agent'; return { rider: name, owner, season: seasonByName[name], team: teamByMatch[mt] || 0 }; })
       .sort((a, b) => b.season - a.season);
     const leaderboard = lb.map((r, i) => ({ rank: i + 1, rider: r.rider, owner: r.owner, season: r.season, team: r.team }));
-    const freeAgents = lb.filter(r => r.owner === 'Free Agent').map((r, i) => ({ rank: i + 1, rider: r.rider, pts: r.season }));
+    const freeAgents = lb.filter(r => r.owner === 'Free Agent').map((r, i) => ({ rank: i + 1, rider: r.rider, pts: r.season, teamPts: r.team, teamOwner: teamOwnerByMatch[norm(r.rider)] || '' }));
 
     // history: every owned scoring result, newest first (date desc, place asc, pts desc)
     const blankStage = s => /one day/i.test(s) ? '' : s;
