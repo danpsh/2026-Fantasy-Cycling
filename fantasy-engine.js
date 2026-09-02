@@ -241,6 +241,7 @@
       const repAfter = replTargets[r.owner + '|' + r.rider_name.toLowerCase().trim()];
       if (repAfter != null && repAfter > parseDate(r.add_date)) return; // replaced later -> not active
       activeNO[r.rider_name + '|' + r.owner] = true;
+      activeNO[r.match_name + '|' + r.owner] = true;
     });
 
     // leaderboard: merge stints by name|owner|role
@@ -270,9 +271,9 @@
     // free agents: NOT currently rostered, full-season points; teamPts = subset earned while owned
     const activeRiderNames = new Set(Object.keys(activeNO).map(k => k.slice(0, k.lastIndexOf('|'))));
     const faTotalMap = {}, faOwnedMap = {}, faOwnerMap = {};
-    raw.forEach(e => { const tbl = e.Category === 'Stage Result' ? STAGE_SCORE : (GT_SCORING[e.Category] || GT_SCORING.Jersey); faTotalMap[e.res_rider] = (faTotalMap[e.res_rider] || 0) + (tbl[e.rank] || 0); });
+    raw.filter(e => e.Category === 'Stage Result' || e.Stage === latest).forEach(e => { const tbl = e.Category === 'Stage Result' ? STAGE_SCORE : (GT_SCORING[e.Category] || GT_SCORING.Jersey); faTotalMap[e.res_rider] = (faTotalMap[e.res_rider] || 0) + (tbl[e.rank] || 0); });
     proc.forEach(p => { faOwnedMap[p.rider_name] = (faOwnedMap[p.rider_name] || 0) + p.pts; faOwnerMap[p.rider_name] = p.owner; });
-    const freeAgents = Object.keys(faTotalMap).filter(name => !activeRiderNames.has(name) && faTotalMap[name] > 0)
+    const freeAgents = Object.keys(faTotalMap).filter(name => !activeRiderNames.has(name) && !activeRiderNames.has(norm(name)) && faTotalMap[name] > 0)
       .map(name => ({ name, pts: r1(faTotalMap[name]), teamPts: r1(faOwnedMap[name] || 0), teamOwner: faOwnerMap[name] || '' })).sort((a, b) => b.pts - a.pts);
 
     // stats: wins/podiums/top10 among owned riders' stage results
