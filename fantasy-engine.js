@@ -612,6 +612,6 @@
   }
 
   window.FantasyEngine = Object.assign(window.FantasyEngine || {}, {
-    loadGrandTour, computeGrandTour, loadAnnual, computeAnnual, buildTdfRosterCsv, computeRiderLeaderboard, xlsxRows, xlsxSheets, parseCsv, rowsToObjs, _helpers: { norm, parseDate, fmtDate, fmtMs, r1 }
+    loadGrandTour, computeGrandTour, loadAnnual, computeAnnual, buildTdfRosterCsv, computeRiderLeaderboard, xlsxRows, xlsxSheets, parseCsv, rowsToObjs, TDF_STAGE_SCORING, _helpers: { norm, parseDate, fmtDate, fmtMs, r1 }
   });
 })();
