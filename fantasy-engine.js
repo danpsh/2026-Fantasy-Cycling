@@ -51,7 +51,7 @@
         let val = '';
         if (t === 'inlineStr') { const im = /<t[^>]*>([\s\S]*?)<\/t>/.exec(inner); val = im ? im[1] : ''; }
         else { const v = /<v>([\s\S]*?)<\/v>/.exec(inner); val = t === 's' ? (v ? shared[+v[1]] : '') : (v ? v[1] : ''); }
-        cells[ci] = (val || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+        cells[ci] = (val || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-fA-F]+);/g, (m, n) => String.fromCharCode(parseInt(n, 16)));
       }
       rows.push(cells);
     }
