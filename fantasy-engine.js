@@ -36,7 +36,7 @@
     while ((m = re.exec(xml))) {
       const t = m[1].replace(/<rPh[\s\S]*?<\/rPh>/g, '');
       const ts = [...t.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => x[1]);
-      arr.push(ts.join('').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"'));
+      arr.push(ts.join('').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-fA-F]+);/g, (m, n) => String.fromCharCode(parseInt(n, 16))));
     }
     return arr;
   }
