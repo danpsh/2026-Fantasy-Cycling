@@ -347,7 +347,7 @@
     'Tier 2': { 1: 20, 2: 18, 3: 16, 4: 14, 5: 12, 6: 10, 7: 8, 8: 6, 9: 4, 10: 2 },
     'Tier 3': { 1: 10, 2: 9, 3: 8, 4: 7, 5: 6, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1 }
   };
-  const FAR_FUTURE = Date.UTC(2026, 11, 31);
+  const FAR_FUTURE = Date.UTC(2100, 0, 1);
 
   function computeAnnual(ridersInput, scheduleInput, resultsRows) {
     // riders / schedule inputs may be CSV text OR already-parsed rows (from xlsx tabs)
@@ -355,12 +355,12 @@
     // riders
     const riders = rowsToObjs(asRows(ridersInput)).map((r, i) => ({
       rider_name: r.rider_name, owner: r.owner,
-      add: parseDate(r.add_date) != null ? parseDate(r.add_date) : Date.UTC(2026, 0, 1),
+      add: parseDate(r.add_date) != null ? parseDate(r.add_date) : Date.UTC(2000, 0, 1),
       drop: parseDate(r.drop_date),
       replFor: (r.replacement_for || '').trim(),
       match: norm(r.rider_name), _i: i
     }));
-    const owners = [...new Set(riders.map(r => r.owner))];
+    const owners = [...new Set(['Daniel', 'Tanner'].concat(riders.map(r => r.owner).filter(Boolean)))];
     const cum = {}; riders.forEach(r => { if (!r.replFor) { cum[r.owner] = (cum[r.owner] || 0) + 1; r.slot = cum[r.owner]; } });
     const ownerByMatch = {}; riders.forEach(r => { if (ownerByMatch[r.match] == null) ownerByMatch[r.match] = r.owner; });
     // currently-active owner per rider (null/undropped stint not superseded by a later replacement) — used to tell true free agents from riders just dropped
@@ -389,8 +389,6 @@
       const dms = parseDate(o.Date); const tier = (schedInfo[race] || {}).tier;
       STAGE_COLS.forEach((c, i) => { const raw = (o[c] || '').trim(); if (!raw) return; field.push({ date: dms, race, stage: (o.Stage || '').trim(), rider: raw, match: norm(raw), place: i + 1, tier, pts: (ANNUAL_TIER[tier] || {})[i + 1] || 0 }); });
     }
-    if (!field.length) return null;
-
     // ownership window
     const rosterByMatch = {}; riders.forEach(r => { (rosterByMatch[r.match] = rosterByMatch[r.match] || []).push(r); });
     const ownerStint = (match, dms) => { const list = rosterByMatch[match]; if (!list) return null; for (const r of list) { const dr = r.drop != null ? r.drop : FAR_FUTURE; if (dms >= r.add && dms <= dr) return r; } return null; };
@@ -480,15 +478,23 @@
   async function fetchText(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) { const e = new Error('HTTP ' + r.status + ' ' + url); e.status = r.status; throw e; } return r.text(); }); }
   async function fetchBuf(url) { return _retry(async () => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) { const e = new Error('HTTP ' + r.status + ' ' + url); e.status = r.status; throw e; } return r.arrayBuffer(); }); }
 
+  // 2027 season files. 2026 seasons are frozen in *-2026-history.js snapshots (see History page).
   const GT_CONFIG = {
+    giro: { config: 'giro-2027.xlsx', race: "Giro d'Italia", year: 2027, repcut: Date.UTC(2027, 4, 17) },
+    tdf: { riders: 'tdf-2027-riders.csv', results: 'tdf-2027-results.xlsx', race: 'Tour de France', year: 2027, repcut: DEFAULT_REPCUT, stageScoring: TDF_STAGE_SCORING },
+    vuelta: { riders: 'vuelta-2027-riders.csv', results: 'vuelta-2027-results.xlsx', race: 'Vuelta a España', year: 2027, repcut: DEFAULT_REPCUT, stageScoring: TDF_STAGE_SCORING }
+  };
+
+  // Frozen 2026 season files (archive pages pass this as cfgMap).
+  const GT_CONFIG_2026 = {
     giro: { config: 'giro.xlsx', race: "Giro d'Italia", year: 2026, repcut: Date.UTC(2026, 4, 16) },
     tdf: { riders: 'tdf-riders.csv', results: 'tdf-results.xlsx', race: 'Tour de France', year: 2026, repcut: Date.UTC(2026, 6, 13), stageScoring: TDF_STAGE_SCORING },
-    vuelta: { riders: 'vuelta-riders.csv', results: 'vuelta-results.xlsx', race: 'Vuelta a España', year: 2026, repcut: Date.UTC(2026, 7, 31), stageScoring: TDF_STAGE_SCORING }
+    vuelta: { riders: 'vuelta-riders.csv', results: 'vuelta-results.xlsx', race: 'Vuelta a Espa\u00f1a', year: 2026, repcut: Date.UTC(2026, 7, 31), stageScoring: TDF_STAGE_SCORING }
   };
 
   // Returns derived data object, or null if this race has no data files yet.
-  async function loadGrandTour(race) {
-    const cfg = GT_CONFIG[race]; if (!cfg) return null;
+  async function loadGrandTour(race, cfgMap) {
+    const cfg = (cfgMap || GT_CONFIG)[race]; if (!cfg) return null;
     let ridersInput, rows = [];
     if (cfg.config) {
       // combined workbook: Riders + Results tabs in one .xlsx
@@ -507,9 +513,10 @@
 
   // Riders + Schedule live as two tabs in annual-config.xlsx; results stay in their own file.
   const ANNUAL_CONFIG = { config: 'annual-config.xlsx', results: 'annual-results.xlsx' };
-  async function loadAnnual() {
+  async function loadAnnual(opts) {
+    const files = Object.assign({}, ANNUAL_CONFIG, opts || {});
     let cfgBuf, resBuf;
-    try { [cfgBuf, resBuf] = await Promise.all([fetchBuf(ANNUAL_CONFIG.config), fetchBuf(ANNUAL_CONFIG.results)]); }
+    try { [cfgBuf, resBuf] = await Promise.all([fetchBuf(files.config), fetchBuf(files.results)]); }
     catch (e) { return null; }
     try {
       const tabs = await xlsxSheets(cfgBuf);
@@ -613,6 +620,6 @@
   }
 
   window.FantasyEngine = Object.assign(window.FantasyEngine || {}, {
-    loadGrandTour, computeGrandTour, loadAnnual, computeAnnual, buildTdfRosterCsv, computeRiderLeaderboard, xlsxRows, xlsxSheets, parseCsv, rowsToObjs, TDF_STAGE_SCORING, _helpers: { norm, parseDate, fmtDate, fmtMs, r1 }
+    loadGrandTour, GT_CONFIG_2026, computeGrandTour, loadAnnual, computeAnnual, buildTdfRosterCsv, computeRiderLeaderboard, xlsxRows, xlsxSheets, parseCsv, rowsToObjs, TDF_STAGE_SCORING, _helpers: { norm, parseDate, fmtDate, fmtMs, r1 }
   });
 })();
