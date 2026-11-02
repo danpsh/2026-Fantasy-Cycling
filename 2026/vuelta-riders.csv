@@ -1,11 +1,11 @@
 rider_name,owner,add_date,drop_date,is_replacement,rider_role,replaces_rider
 Felix Gall,Daniel,2026-08-21,,False,GC,
 Oscar Onley,Tanner,2026-08-21,,False,GC,
-Joao Almeida,Daniel,2026-08-21,2026-08-31,False,GC,
+João Almeida,Daniel,2026-08-21,2026-08-31,False,GC,
 Mattias Skjelmose,Tanner,2026-08-21,,False,GC,
 Mads Pedersen,Daniel,2026-08-21,2026-09-02,False,Stage Hunter,
 Matthew Brennan,Tanner,2026-08-21,,False,Sprinter,
-Wout Van Aert,Daniel,2026-08-21,,False,Stage Hunter,
+Wout van Aert,Daniel,2026-08-21,,False,Stage Hunter,
 Enric Mas,Tanner,2026-08-21,,False,GC,
 Richard Carapaz,Daniel,2026-08-21,,False,GC,
 Kaden Groves,Tanner,2026-08-21,2026-08-31,False,Sprinter,
@@ -14,7 +14,7 @@ Bryan Coquard,Tanner,2026-08-21,,False,Sprinter,
 Matthew Riccitello,Daniel,2026-08-21,2026-09-13,False,Stage Hunter,
 Orluis Aular,Tanner,2026-08-21,,False,Sprinter,
 Tobias Halland Johannessen,Daniel,2026-08-21,,False,GC,
-Primoz Roglic,Tanner,2026-08-21,,False,GC,
+Primož Roglič,Tanner,2026-08-21,,False,GC,
 Jay Vine,Daniel,2026-08-21,2026-09-03,False,Stage Hunter,
 Cian Uijtdebroeks,Tanner,2026-08-21,2026-08-26,False,GC,
 Jorgen Nordhagen,Daniel,2026-08-21,2026-08-31,False,GC,
@@ -26,7 +26,7 @@ Ethan Hayter,Tanner,2026-08-21,,False,Sprinter,
 Lorenzo Fortunato,Daniel,2026-08-21,2026-09-07,False,Stage Hunter,
 Ivan Romeo,Tanner,2026-08-21,2026-09-07,False,Stage Hunter,
 Andreas Leknessund,Daniel,2026-08-21,,False,Stage Hunter,
-Carlos Rodriguez,Tanner,2026-08-21,2026-08-31,False,GC,
+Carlos Rodríguez,Tanner,2026-08-21,2026-08-31,False,GC,
 Stefan Kung,Daniel,2026-08-21,2026-09-11,False,Stage Hunter,
 Harold Tejada,Tanner,2026-08-21,,False,GC,
 Raul Garcia Pierna,Daniel,2026-08-21,2026-09-07,False,Stage Hunter,
@@ -42,11 +42,11 @@ Christophe Laporte,Tanner,2026-08-21,2026-09-06,False,Stage Hunter,
 Ramses Debruyne,Tanner,2026-08-26,,True,GC,Cian Uijtdebroeks
 Clément Berthet,Daniel,2026-08-27,,True,GC,Joshua Tarling
 Jakob Omrzel,Daniel,2026-08-30,,True,GC,Pablo Torres
-Cristián Rodríguez,Daniel,2026-08-31,,True,GC,Joao Almeida
+Cristián Rodríguez,Daniel,2026-08-31,,True,GC,João Almeida
 Alessandro Romele,Tanner,2026-08-31,,True,Sprinter,Magnus Cort
 Ben Turner,Tanner,2026-08-31,2026-09-02,True,Sprinter,Luke Tuckwell
 Hugo Hofstetter,Daniel,2026-08-31,,True,Sprinter,Jorgen Nordhagen
-Léo Bisiaux,Tanner,2026-08-31,,True,GC,Carlos Rodriguez
+Léo Bisiaux,Tanner,2026-08-31,,True,GC,Carlos Rodríguez
 Pau Miquel,Daniel,2026-08-31,2026-09-07,True,Sprinter,Ben Tulett
 Gregor Mühlberger,Tanner,2026-08-31,2026-09-05,True,GC,Kaden Groves
 Bastien Tronchon,Tanner,2026-09-02,,True,Sprinter,Ben Turner
@@ -54,7 +54,7 @@ Magnus Cort,Daniel,2026-09-02,,True,Stage Hunter,Mads Pedersen
 Thibau Nys,Daniel,2026-09-03,,True,Stage Hunter,Jay Vine
 Vincenzo Albanese,Tanner,2026-09-05,,True,Stage Hunter,Gregor Mühlberger
 Valentin Paret-Peintre,Tanner,2026-09-06,,True,Stage Hunter,Christophe Laporte
-Joao Almeida,Daniel,2026-09-07,,True,Stage Hunter,Lorenzo Fortunato
+João Almeida,Daniel,2026-09-07,,True,Stage Hunter,Lorenzo Fortunato
 Kevin Vermaerke,Tanner,2026-09-07,,True,Stage Hunter,Ivan Romeo
 Marco Brenner,Daniel,2026-09-07,,True,Stage Hunter,Pau Miquel
 Ivan Romeo,Daniel,2026-09-07,,True,Stage Hunter,Raul Garcia Pierna
